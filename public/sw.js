@@ -1,7 +1,7 @@
 // PowerBuild Tracker — Service Worker v1
 // Minimal offline shell: caches the app shell for fast load on mobile
 
-const CACHE_NAME = "powerbuild-v2";
+const CACHE_NAME = "powerbuild-v3";
 const STATIC_ASSETS = ["/", "/dashboard", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
