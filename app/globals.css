@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+/* ─── Theme tokens (Tailwind v4 @theme) ────────────────────── */
+@theme {
+  /* Radius */
+  --radius:    0.75rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* Colors — Iron & Red powerlifting theme */
+  --color-background:           hsl(0 0% 6%);
+  --color-foreground:           hsl(0 0% 95%);
+
+  --color-card:                 hsl(0 0% 9%);
+  --color-card-foreground:      hsl(0 0% 95%);
+
+  --color-popover:              hsl(0 0% 9%);
+  --color-popover-foreground:   hsl(0 0% 95%);
+
+  --color-primary:              hsl(0 78% 50%);
+  --color-primary-foreground:   hsl(0 0% 100%);
+
+  --color-secondary:            hsl(0 5% 14%);
+  --color-secondary-foreground: hsl(0 5% 78%);
+
+  --color-muted:                hsl(0 5% 12%);
+  --color-muted-foreground:     hsl(0 5% 48%);
+
+  --color-accent:               hsl(0 5% 17%);
+  --color-accent-foreground:    hsl(0 0% 95%);
+
+  --color-destructive:          hsl(0 84% 62%);
+  --color-destructive-foreground: hsl(0 0% 100%);
+
+  --color-border:               hsl(0 5% 17%);
+  --color-input:                hsl(0 5% 17%);
+  --color-ring:                 hsl(0 78% 50%);
+
+  --color-brand:                hsl(0 78% 50%);
+  --color-brand-foreground:     hsl(0 0% 100%);
+
+  --color-success:              hsl(142 60% 42%);
+  --color-success-foreground:   hsl(0 0% 100%);
+
+  --color-warning:              hsl(38 88% 50%);
+  --color-warning-foreground:   hsl(0 0% 100%);
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+
+  /* Custom keyframes for UI animations */
+  @keyframes accordion-down {
+    from { height: 0; }
+    to   { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to   { height: 0; }
+  }
+  @keyframes slide-up {
+    from { transform: translateY(100%); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes enter {
+    from { opacity: var(--tw-enter-opacity, 1); transform: translate(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0)) scale(var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0)); }
+    to   { opacity: 1; transform: translate(0, 0) scale(1) rotate(0); }
+  }
+  @keyframes exit {
+    from { opacity: 1; transform: translate(0, 0) scale(1) rotate(0); }
+    to   { opacity: var(--tw-exit-opacity, 1); transform: translate(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0)) scale(var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0)); }
+  }
+
+  /* Named animation shorthands */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up:   accordion-up 0.2s ease-out;
+  --animate-slide-up:       slide-up 0.3s ease-out;
+  --animate-fade-in:        fade-in 0.2s ease-out;
+  --animate-pulse-slow:     pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ─── Radix UI / animate-in / animate-out utilities ─────────── */
+/* These replace tailwindcss-animate for v4 */
+@layer utilities {
+  .animate-in  { animation: enter 0.2s ease-out; animation-fill-mode: both; }
+  .animate-out { animation: exit  0.2s ease-in;  animation-fill-mode: both; }
+
+  .fade-in-0  { --tw-enter-opacity: 0; }
+  .fade-out-0 { --tw-exit-opacity:  0; }
+
+  .zoom-in-95  { --tw-enter-scale: 0.95; }
+  .zoom-out-95 { --tw-exit-scale:  0.95; }
+
+  .slide-in-from-left-1\/2  { --tw-enter-translate-x: -50%; }
+  .slide-out-to-left-1\/2   { --tw-exit-translate-x:  -50%; }
+  .slide-in-from-top-\[48\%\]  { --tw-enter-translate-y: -48%; }
+  .slide-out-to-top-\[48\%\]   { --tw-exit-translate-y:  -48%; }
+  .slide-in-from-top-\[50\%\]  { --tw-enter-translate-y: -50%; }
+  .slide-out-to-top-\[50\%\]   { --tw-exit-translate-y:  -50%; }
+
+  /* data-state variants for Radix components */
+  [data-state="open"]   .animate-in  { animation-name: enter; }
+  [data-state="closed"] .animate-out { animation-name: exit; }
+}
+
+/* ─── Base styles ───────────────────────────────────────────── */
+@layer base {
+  html { color-scheme: dark; }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    overflow-y: scroll;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Remove number input spinners */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] { -moz-appearance: textfield; }
+}
+
+/* ─── Custom utilities ──────────────────────────────────────── */
+@layer utilities {
+  .safe-top    { padding-top:    env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-left   { padding-left:   env(safe-area-inset-left); }
+  .safe-right  { padding-right:  env(safe-area-inset-right); }
+
+  .tap-none   { -webkit-tap-highlight-color: transparent; }
+  .touch-none { touch-action: none; }
+
+  .gradient-text {
+    background: linear-gradient(to right, hsl(0 78% 65%), hsl(0 78% 42%));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .brand-glow {
+    box-shadow: 0 0 20px hsl(0 78% 50% / 0.35);
+  }
+
+  .pb-nav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+
+  .font-num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
