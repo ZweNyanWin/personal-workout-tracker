@@ -25,9 +25,6 @@ import {
   Plus,
   Trash2,
   Dumbbell,
-  Timer,
-  Weight,
-  Target,
 } from "lucide-react";
 import type { Exercise } from "@/types";
 
@@ -338,7 +335,29 @@ export default function SessionDetailPage() {
       )}
 
       {/* Exercise list */}
-      <div className="p-4 md:p-6 max-w-2xl mx-auto w-full">
+      <div className="p-4 md:p-6 max-w-2xl mx-auto w-full space-y-3">
+        {/* kg / lb toggle */}
+        {session.exercises.length > 0 && (
+          <div className="flex justify-end">
+            <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+              <button
+                type="button"
+                onClick={() => setUnit("kg")}
+                className={`px-3 py-1 transition-colors tap-none ${unit === "kg" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                kg
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnit("lb")}
+                className={`px-3 py-1 transition-colors tap-none ${unit === "lb" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                lb
+              </button>
+            </div>
+          </div>
+        )}
+
         {session.exercises.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <Dumbbell className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
@@ -348,78 +367,82 @@ export default function SessionDetailPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {session.exercises.map((se, idx) => (
-              <div
-                key={se.id}
-                className="rounded-xl border border-border bg-card p-4"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary text-xs font-bold">
+          session.exercises.map((se, idx) => {
+            const weightKg = se.target_weight_kg;
+            const weightDisplay = weightKg != null
+              ? unit === "lb"
+                ? `${Math.round(weightKg * 2.20462 * 10) / 10} lb`
+                : `${weightKg} kg`
+              : null;
+
+            const restDisplay = se.rest_seconds != null
+              ? se.rest_seconds >= 60
+                ? `${Math.floor(se.rest_seconds / 60)} min${se.rest_seconds % 60 ? ` ${se.rest_seconds % 60} sec` : ""}`
+                : `${se.rest_seconds} sec`
+              : null;
+
+            return (
+              <div key={se.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                {/* Exercise header */}
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-accent/20">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/20 text-primary text-xs font-bold">
                     {idx + 1}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold">{se.exercise.name}</p>
-                      {se.is_warmup && (
-                        <Badge variant="secondary" className="text-[10px] py-0">
-                          Warmup
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Prescription pills */}
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {se.target_sets && se.target_reps && (
-                        <div className="flex items-center gap-1 text-xs bg-secondary rounded-lg px-2 py-1">
-                          <Target className="h-3 w-3 text-primary" />
-                          <span className="font-num">
-                            {se.target_sets} × {se.target_reps}
-                          </span>
-                        </div>
-                      )}
-                      {se.target_weight_kg && (
-                        <div className="flex items-center gap-1 text-xs bg-secondary rounded-lg px-2 py-1">
-                          <Weight className="h-3 w-3 text-primary" />
-                          <span className="font-num">{se.target_weight_kg} kg</span>
-                        </div>
-                      )}
-                      {se.target_rpe && (
-                        <div className="flex items-center gap-1 text-xs bg-secondary rounded-lg px-2 py-1">
-                          <span className="text-primary font-bold">RPE</span>
-                          <span className="font-num">{se.target_rpe}</span>
-                        </div>
-                      )}
-                      {se.rest_seconds && (
-                        <div className="flex items-center gap-1 text-xs bg-secondary rounded-lg px-2 py-1">
-                          <Timer className="h-3 w-3 text-muted-foreground" />
-                          <span className="font-num">
-                            {se.rest_seconds >= 60
-                              ? `${Math.floor(se.rest_seconds / 60)}m${se.rest_seconds % 60 ? ` ${se.rest_seconds % 60}s` : ""}`
-                              : `${se.rest_seconds}s`}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {se.notes && (
-                      <p className="text-xs text-muted-foreground mt-2 italic">
-                        {se.notes}
-                      </p>
-                    )}
-                  </div>
-
+                  <p className="text-sm font-semibold flex-1">{se.exercise.name}</p>
+                  {se.is_warmup && (
+                    <Badge variant="secondary" className="text-[10px] py-0">Warmup</Badge>
+                  )}
                   <button
                     onClick={() => handleRemove(se.id, se.exercise.name)}
                     disabled={removing}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors tap-none"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors tap-none"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
+
+                {/* Prescription grid */}
+                <div className="grid grid-cols-2 divide-x divide-y divide-border">
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Sets × Reps</p>
+                    <p className="text-sm font-semibold font-num">
+                      {se.target_sets && se.target_reps
+                        ? `${se.target_sets} × ${se.target_reps}`
+                        : se.target_sets
+                        ? `${se.target_sets} sets`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Target Weight</p>
+                    <p className={`text-sm font-semibold font-num ${weightDisplay ? "text-foreground" : "text-muted-foreground"}`}>
+                      {weightDisplay ?? "Not set"}
+                    </p>
+                  </div>
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">RPE Target</p>
+                    <p className={`text-sm font-semibold font-num ${se.target_rpe != null ? "text-primary" : "text-muted-foreground"}`}>
+                      {se.target_rpe != null ? `RPE ${se.target_rpe} / 10` : "Not set"}
+                    </p>
+                  </div>
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Rest Between Sets</p>
+                    <p className={`text-sm font-semibold font-num ${restDisplay ? "text-foreground" : "text-muted-foreground"}`}>
+                      {restDisplay ?? "Not set"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Coach notes */}
+                {se.notes && (
+                  <div className="px-4 py-2.5 border-t border-border bg-accent/10">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Coach Notes</p>
+                    <p className="text-xs text-foreground">{se.notes}</p>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
       </div>
     </div>
