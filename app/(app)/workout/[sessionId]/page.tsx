@@ -8,6 +8,7 @@ import {
   getAllExercises,
   addSessionExercise,
   removeSessionExercise,
+  updateSessionExercise,
 } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
   Plus,
   Trash2,
   Dumbbell,
+  Pencil,
 } from "lucide-react";
 import type { Exercise } from "@/types";
 
@@ -56,7 +58,9 @@ export default function SessionDetailPage() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<SessionExerciseRow | null>(null);
   const [saving, startSave] = useTransition();
+  const [updating, startUpdate] = useTransition();
   const [removing, startRemove] = useTransition();
 
   // Add form state
@@ -70,6 +74,15 @@ export default function SessionDetailPage() {
   const [isWarmup, setIsWarmup] = useState(false);
   const [search, setSearch] = useState("");
   const [unit, setUnit] = useState<"kg" | "lb">("kg");
+
+  // Edit form state
+  const [editSets, setEditSets] = useState("");
+  const [editReps, setEditReps] = useState("");
+  const [editWeight, setEditWeight] = useState("");
+  const [editRpe, setEditRpe] = useState("");
+  const [editRest, setEditRest] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editUnit, setEditUnit] = useState<"kg" | "lb">("kg");
 
   useEffect(() => {
     if (!sessionId) return;
@@ -133,6 +146,45 @@ export default function SessionDetailPage() {
       const result = await removeSessionExercise(seId);
       if (result.success) {
         toast.success(`Removed ${name}`);
+        const updated = await getSessionWithExercises(sessionId);
+        if (updated) setSession(updated as SessionData);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function openEdit(se: SessionExerciseRow) {
+    setEditTarget(se);
+    setEditSets(se.target_sets?.toString() ?? "");
+    setEditReps(se.target_reps ?? "");
+    setEditRpe(se.target_rpe?.toString() ?? "");
+    setEditRest(se.rest_seconds?.toString() ?? "");
+    setEditNotes(se.notes ?? "");
+    // show existing weight in kg by default
+    setEditUnit("kg");
+    setEditWeight(se.target_weight_kg?.toString() ?? "");
+  }
+
+  function handleUpdate() {
+    if (!editTarget) return;
+    startUpdate(async () => {
+      const rawWeight = editWeight ? parseFloat(editWeight) : null;
+      const weightInKg = rawWeight != null
+        ? editUnit === "lb" ? Math.round(rawWeight * 0.453592 * 10) / 10 : rawWeight
+        : null;
+
+      const result = await updateSessionExercise(editTarget.id, {
+        target_sets: editSets ? parseInt(editSets) : null,
+        target_reps: editReps || null,
+        target_rpe: editRpe ? parseFloat(editRpe) : null,
+        target_weight_kg: weightInKg,
+        rest_seconds: editRest ? parseInt(editRest) : null,
+        notes: editNotes || null,
+      });
+      if (result.success) {
+        toast.success("Updated");
+        setEditTarget(null);
         const updated = await getSessionWithExercises(sessionId);
         if (updated) setSession(updated as SessionData);
       } else {
@@ -327,6 +379,62 @@ export default function SessionDetailPage() {
         </Dialog>
       </div>
 
+      {/* Edit exercise dialog */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null); }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit: {editTarget?.exercise.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Sets</Label>
+                <Input type="number" placeholder="e.g. 4" value={editSets} onChange={(e) => setEditSets(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Reps</Label>
+                <Input placeholder="e.g. 5 or 8-10" value={editReps} onChange={(e) => setEditReps(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label>Weight</Label>
+                  <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+                    <button type="button" onClick={() => {
+                      if (editUnit === "lb" && editWeight) {
+                        setEditWeight((Math.round(parseFloat(editWeight) * 0.453592 * 10) / 10).toString());
+                      }
+                      setEditUnit("kg");
+                    }} className={`px-2 py-0.5 transition-colors tap-none ${editUnit === "kg" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>kg</button>
+                    <button type="button" onClick={() => {
+                      if (editUnit === "kg" && editWeight) {
+                        setEditWeight((Math.round(parseFloat(editWeight) * 2.20462 * 10) / 10).toString());
+                      }
+                      setEditUnit("lb");
+                    }} className={`px-2 py-0.5 transition-colors tap-none ${editUnit === "lb" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>lb</button>
+                  </div>
+                </div>
+                <Input type="number" placeholder={editUnit === "kg" ? "e.g. 100" : "e.g. 225"} value={editWeight} onChange={(e) => setEditWeight(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>RPE</Label>
+                <Input type="number" placeholder="e.g. 8" value={editRpe} onChange={(e) => setEditRpe(e.target.value)} />
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <Label>Rest (seconds)</Label>
+                <Input type="number" placeholder="e.g. 180" value={editRest} onChange={(e) => setEditRest(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Coach Notes</Label>
+              <Input placeholder="Cues, tempo, etc." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+            </div>
+            <Button type="button" className="w-full" loading={updating} onClick={handleUpdate}>
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Session notes */}
       {session.notes && (
         <div className="px-4 py-3 bg-accent/30 border-b border-border">
@@ -392,6 +500,12 @@ export default function SessionDetailPage() {
                   {se.is_warmup && (
                     <Badge variant="secondary" className="text-[10px] py-0">Warmup</Badge>
                   )}
+                  <button
+                    onClick={() => openEdit(se)}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors tap-none"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     onClick={() => handleRemove(se.id, se.exercise.name)}
                     disabled={removing}
