@@ -542,6 +542,15 @@ export async function markSessionDone(sessionId: string): Promise<ActionResult> 
 
   const today = new Date().toISOString().split("T")[0];
 
+  // Delete any in_progress logs for this session today before marking done
+  await supabase
+    .from("workout_logs")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("session_id", sessionId)
+    .eq("status", "in_progress")
+    .gte("date", today);
+
   // Already completed today → no-op
   const { data: existing } = await supabase
     .from("workout_logs")
@@ -607,19 +616,29 @@ export async function unmarkSessionDone(sessionId: string): Promise<ActionResult
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
+  const today = new Date().toISOString().split("T")[0];
+
+  // Grab one log to get assignment_id before deleting
   const { data: log } = await supabase
     .from("workout_logs")
     .select("id, assignment_id")
     .eq("user_id", user.id)
     .eq("session_id", sessionId)
-    .eq("status", "completed")
+    .gte("date", today)
     .order("date", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (!log) return { success: false, error: "No completed workout found" };
+  if (!log) return { success: false, error: "No workout found for today" };
 
-  const { error } = await supabase.from("workout_logs").delete().eq("id", log.id);
+  // Delete ALL logs for this session today (in_progress + completed)
+  const { error } = await supabase
+    .from("workout_logs")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("session_id", sessionId)
+    .gte("date", today);
+
   if (error) return { success: false, error: error.message };
 
   // Decrement session index
