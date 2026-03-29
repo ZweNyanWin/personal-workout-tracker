@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MarkDoneButton } from "@/components/workout/mark-done-button";
 import { SESSION_BG_COLORS } from "@/lib/utils";
 import { Play, Eye } from "lucide-react";
 import type { Metadata } from "next";
@@ -32,13 +33,27 @@ export default async function WorkoutPage() {
     .maybeSingle();
 
   let sessions: any[] = [];
+  let completedSessionIds = new Set<string>();
+
   if (assignment) {
-    const { data } = await supabase
-      .from("program_sessions")
-      .select("*, block:program_blocks(title), exercises:session_exercises(id)")
-      .eq("program_id", assignment.program_id)
-      .order("session_order", { ascending: true });
-    sessions = data ?? [];
+    const today = new Date().toISOString().split("T")[0];
+
+    const [sessionsResult, logsResult] = await Promise.all([
+      supabase
+        .from("program_sessions")
+        .select("*, block:program_blocks(title), exercises:session_exercises(id)")
+        .eq("program_id", assignment.program_id)
+        .order("session_order", { ascending: true }),
+      supabase
+        .from("workout_logs")
+        .select("session_id")
+        .eq("user_id", user.id)
+        .eq("status", "completed")
+        .gte("date", today),
+    ]);
+
+    sessions = sessionsResult.data ?? [];
+    completedSessionIds = new Set((logsResult.data ?? []).map((l: any) => l.session_id));
   }
 
   const currentIdx = assignment?.current_session_index ?? 0;
@@ -68,13 +83,18 @@ export default async function WorkoutPage() {
             <div className="space-y-3">
               {sessions.map((session, idx) => {
                 const isNext = idx === currentIdx % totalSessions;
+                const isDone = completedSessionIds.has(session.id);
                 const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
 
                 return (
                   <div
                     key={session.id}
                     className={`rounded-xl border p-4 transition-colors ${
-                      isNext ? "border-primary/40 bg-primary/5" : "border-border bg-card"
+                      isDone
+                        ? "border-success/30 bg-success/5"
+                        : isNext
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-card"
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -83,9 +103,14 @@ export default async function WorkoutPage() {
                           <Badge className={colorClass} variant="outline">
                             {session.title}
                           </Badge>
-                          {isNext && (
+                          {isNext && !isDone && (
                             <Badge variant="brand" className="text-[10px]">
                               Next
+                            </Badge>
+                          )}
+                          {isDone && (
+                            <Badge variant="secondary" className="text-[10px] text-success border-success/30">
+                              Done
                             </Badge>
                           )}
                         </div>
@@ -97,13 +122,14 @@ export default async function WorkoutPage() {
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{session.notes}</p>
                         )}
                       </div>
-                      <div className="flex gap-2 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <MarkDoneButton sessionId={session.id} isDone={isDone} />
                         <Link href={`/workout/${session.id}`}>
                           <Button variant="ghost" size="icon-sm">
                             <Eye className="h-5 w-5" />
                           </Button>
                         </Link>
-                        {isNext && (
+                        {isNext && !isDone && (
                           <Link href={`/log/new?session=${session.id}`}>
                             <Button size="sm" variant="brand">
                               <Play className="h-4 w-4" />

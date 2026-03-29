@@ -534,6 +534,123 @@ export async function upsertExerciseOverride(
   return { success: true, data: undefined };
 }
 
+// ─── Mark session done (without full logging) ────────────────
+export async function markSessionDone(sessionId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not authenticated" };
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Already completed today → no-op
+  const { data: existing } = await supabase
+    .from("workout_logs")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("session_id", sessionId)
+    .eq("status", "completed")
+    .gte("date", today)
+    .maybeSingle();
+
+  if (existing) return { success: true, data: undefined };
+
+  const { data: assignment } = await supabase
+    .from("user_program_assignments")
+    .select("id, program_id, current_session_index")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  const { data: session } = await supabase
+    .from("program_sessions")
+    .select("title")
+    .eq("id", sessionId)
+    .single();
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("workout_logs").insert({
+    user_id: user.id,
+    session_id: sessionId,
+    assignment_id: assignment?.id ?? null,
+    title: session?.title ?? "Workout",
+    date: today,
+    started_at: now,
+    finished_at: now,
+    duration_minutes: 0,
+    status: "completed",
+  });
+
+  if (error) return { success: false, error: error.message };
+
+  // Advance session index
+  if (assignment) {
+    const { data: sessions } = await supabase
+      .from("program_sessions")
+      .select("id")
+      .eq("program_id", assignment.program_id);
+
+    const total = sessions?.length ?? 4;
+    await supabase
+      .from("user_program_assignments")
+      .update({ current_session_index: (assignment.current_session_index + 1) % total })
+      .eq("id", assignment.id);
+  }
+
+  revalidatePath("/workout");
+  revalidatePath("/dashboard");
+  return { success: true, data: undefined };
+}
+
+// ─── Unmark session done ──────────────────────────────────────
+export async function unmarkSessionDone(sessionId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not authenticated" };
+
+  const { data: log } = await supabase
+    .from("workout_logs")
+    .select("id, assignment_id")
+    .eq("user_id", user.id)
+    .eq("session_id", sessionId)
+    .eq("status", "completed")
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!log) return { success: false, error: "No completed workout found" };
+
+  const { error } = await supabase.from("workout_logs").delete().eq("id", log.id);
+  if (error) return { success: false, error: error.message };
+
+  // Decrement session index
+  if (log.assignment_id) {
+    const { data: assignment } = await supabase
+      .from("user_program_assignments")
+      .select("current_session_index, program_id")
+      .eq("id", log.assignment_id)
+      .single();
+
+    if (assignment) {
+      const { data: sessions } = await supabase
+        .from("program_sessions")
+        .select("id")
+        .eq("program_id", assignment.program_id);
+
+      const total = sessions?.length ?? 4;
+      const prevIndex = (assignment.current_session_index - 1 + total) % total;
+
+      await supabase
+        .from("user_program_assignments")
+        .update({ current_session_index: prevIndex })
+        .eq("id", log.assignment_id);
+    }
+  }
+
+  revalidatePath("/workout");
+  revalidatePath("/dashboard");
+  return { success: true, data: undefined };
+}
+
 // ─── Log bodyweight ───────────────────────────────────────────
 export async function logBodyweight(
   weight: number,
