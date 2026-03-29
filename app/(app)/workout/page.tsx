@@ -5,7 +5,7 @@ import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SESSION_BG_COLORS } from "@/lib/utils";
-import { Play, Pencil } from "lucide-react";
+import { Play, Eye } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Workout" };
@@ -100,7 +100,7 @@ export default async function WorkoutPage() {
                       <div className="flex gap-2 shrink-0">
                         <Link href={`/workout/${session.id}`}>
                           <Button variant="ghost" size="icon-sm">
-                            <Pencil className="h-4 w-4" />
+                            <Eye className="h-5 w-5" />
                           </Button>
                         </Link>
                         {isNext && (
