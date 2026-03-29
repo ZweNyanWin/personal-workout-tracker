@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getInitials, relativeDate, formatMinutes, SESSION_BG_COLORS } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { CheckCircle2, ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronRight, Pencil } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Member Detail" };
@@ -70,11 +70,19 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
         <div className="rounded-xl border border-border bg-card p-5 space-y-3">
           <h3 className="font-semibold text-sm">Active Program</h3>
           {activeAssignment ? (
-            <div>
-              <p className="font-medium">{(activeAssignment as any).program?.title}</p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Session index: {activeAssignment.current_session_index}
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium">{(activeAssignment as any).program?.title}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Session index: {activeAssignment.current_session_index}
+                </p>
+              </div>
+              <Link href="/admin/programs">
+                <Button size="sm" variant="outline" className="gap-1.5 shrink-0">
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit Program
+                </Button>
+              </Link>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No program assigned</p>
