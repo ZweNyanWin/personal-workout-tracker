@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getInitials, relativeDate, formatMinutes, SESSION_BG_COLORS } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { CheckCircle2, ChevronRight, Pencil } from "lucide-react";
+import { CheckCircle2, ChevronRight, Pencil, History } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Member Detail" };
@@ -77,7 +77,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
                   Session index: {activeAssignment.current_session_index}
                 </p>
               </div>
-              <Link href="/admin/programs">
+              <Link href={`/admin/programs/${activeAssignment.program_id}`}>
                 <Button size="sm" variant="outline" className="gap-1.5 shrink-0">
                   <Pencil className="h-3.5 w-3.5" />
                   Edit Program
@@ -147,6 +147,44 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
                       {log.session.title}
                     </Badge>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Program assignment history */}
+        <div>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3 px-1">
+            Program History
+          </h3>
+          {assignments.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-6 text-center">
+              <p className="text-sm text-muted-foreground">No programs assigned yet.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+              {assignments.map((a: any) => (
+                <div key={a.id} className="flex items-center gap-3 px-4 py-3">
+                  <History className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{a.program?.title ?? "Unknown program"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Assigned {relativeDate(a.created_at?.split("T")[0])}
+                      {" · "}Session {a.current_session_index}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {a.is_active && (
+                      <Badge variant="brand" className="text-[10px]">Active</Badge>
+                    )}
+                    <Link href={`/admin/programs/${a.program_id}`}>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs gap-1">
+                        <Pencil className="h-3 w-3" />
+                        Edit
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>

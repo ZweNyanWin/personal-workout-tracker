@@ -196,6 +196,19 @@ export async function createSession(
   return { success: true, data: data.id };
 }
 
+// ─── Get single program detail ────────────────────────────────
+export async function getProgramDetail(programId: string) {
+  const { supabase } = await requireAdmin();
+
+  const { data } = await supabase
+    .from("programs")
+    .select("*, blocks:program_blocks(*, sessions:program_sessions(*, exercises:session_exercises(id)))")
+    .eq("id", programId)
+    .single();
+
+  return data ?? null;
+}
+
 // ─── Get all programs ─────────────────────────────────────────
 export async function getAllPrograms() {
   const { supabase } = await requireAdmin();
