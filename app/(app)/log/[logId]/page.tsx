@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useTransition, use } from "react";
+import { useState, useTransition, use, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, X, Clock } from "lucide-react";
-import { finishWorkout } from "@/lib/actions/workout";
-import { getWorkoutLog } from "@/lib/actions/workout";
+import { CheckCircle2, X, Clock, ArrowLeft, Dumbbell } from "lucide-react";
+import { finishWorkout, getWorkoutLog } from "@/lib/actions/workout";
 import { useWorkoutTimer } from "@/lib/hooks/use-workout-timer";
 import { ExerciseCard } from "@/components/logging/exercise-card";
 import { RestTimer } from "@/components/logging/rest-timer";
@@ -13,13 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { SESSION_BG_COLORS, formatWeight } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { SESSION_BG_COLORS, formatWeight, formatMinutes, relativeDate } from "@/lib/utils";
 import type { WorkoutLogFull, WorkoutLogSet } from "@/types";
-import { useEffect } from "react";
 
-export default function ActiveWorkoutPage({ params }: { params: Promise<{ logId: string }> }) {
+export default function WorkoutLogPage({ params }: { params: Promise<{ logId: string }> }) {
   const { logId } = use(params);
   const router = useRouter();
   const [log, setLog] = useState<WorkoutLogFull | null>(null);
@@ -65,7 +63,7 @@ export default function ActiveWorkoutPage({ params }: { params: Promise<{ logId:
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-muted-foreground text-sm">Loading workout…</div>
+        <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
       </div>
     );
   }
@@ -74,20 +72,135 @@ export default function ActiveWorkoutPage({ params }: { params: Promise<{ logId:
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <p className="text-muted-foreground">Workout not found.</p>
-        <Button onClick={() => router.push("/dashboard")} variant="outline">
-          Back to Dashboard
-        </Button>
+        <Button onClick={() => router.push("/history")} variant="outline">Back to History</Button>
       </div>
     );
   }
 
+  const sessionTitle = (log.session as any)?.title ?? log.title;
+  const colorClass = SESSION_BG_COLORS[sessionTitle ?? ""] ?? "bg-primary/20 text-primary border-primary/30";
+
+  // ─── Read-only view for completed workouts ────────────────────
+  if ((log as any).status === "completed") {
+    const totalSets = log.exercises.reduce((acc, ex) => acc + (ex.sets?.length ?? 0), 0);
+    const completedSets = log.exercises.reduce(
+      (acc, ex) => acc + (ex.sets?.filter((s) => s.is_completed).length ?? 0),
+      0
+    );
+    const totalVolume = log.exercises.reduce(
+      (acc, ex) =>
+        acc +
+        (ex.sets ?? []).reduce(
+          (s, set) =>
+            set.is_completed && set.weight_kg && set.reps
+              ? s + set.weight_kg * set.reps
+              : s,
+          0
+        ),
+      0
+    );
+
+    return (
+      <div className="flex flex-col min-h-screen">
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex h-14 items-center gap-3 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
+          <button
+            onClick={() => router.back()}
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors tap-none"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <Badge className={colorClass} variant="outline">{sessionTitle}</Badge>
+              <Badge variant="secondary" className="text-[10px] text-success border-success/30">Done</Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 p-4 md:p-6 max-w-2xl mx-auto w-full space-y-4">
+          {/* Summary stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl border border-border bg-card p-3 text-center">
+              <p className="text-lg font-bold font-num">{relativeDate((log as any).date)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Date</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3 text-center">
+              <p className="text-lg font-bold font-num">
+                {(log as any).duration_minutes ? formatMinutes((log as any).duration_minutes) : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Duration</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-3 text-center">
+              <p className="text-lg font-bold font-num">
+                {totalVolume > 0 ? `${Math.round(totalVolume).toLocaleString()}` : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Vol (kg)</p>
+            </div>
+          </div>
+
+          {/* Exercises */}
+          {log.exercises.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-8 text-center">
+              <Dumbbell className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">No exercises logged for this session.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {log.exercises.map((ex) => {
+                const completedSetsList = (ex.sets ?? []).filter((s) => s.is_completed);
+                return (
+                  <div key={ex.id} className="rounded-xl border border-border bg-card p-4">
+                    <p className="text-sm font-semibold mb-3">{(ex as any).exercise?.name ?? "Exercise"}</p>
+                    {completedSetsList.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No sets completed</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="grid grid-cols-4 text-[10px] text-muted-foreground uppercase tracking-wide px-1">
+                          <span>Set</span>
+                          <span>Weight</span>
+                          <span>Reps</span>
+                          <span>RPE</span>
+                        </div>
+                        {(ex.sets ?? []).map((set, i) => (
+                          <div
+                            key={set.id}
+                            className={`grid grid-cols-4 text-sm px-1 py-1 rounded-lg font-num ${
+                              set.is_completed ? "" : "opacity-40"
+                            }`}
+                          >
+                            <span className="text-muted-foreground">{i + 1}</span>
+                            <span>{set.weight_kg != null ? formatWeight(set.weight_kg) : "—"}</span>
+                            <span>{set.reps ?? "—"}</span>
+                            <span>{set.rpe ?? "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Notes */}
+          {(log as any).notes && (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
+              <p className="text-sm">{(log as any).notes}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Active workout view ───────────────────────────────────────
   const completedExercises = log.exercises.filter((ex) =>
     ex.sets.length > 0 && ex.sets.every((s) => s.is_completed)
   ).length;
   const totalExercises = log.exercises.length;
   const progressPct = totalExercises > 0 ? (completedExercises / totalExercises) * 100 : 0;
-  const sessionTitle = (log.session as any)?.title ?? log.title;
-  const colorClass = SESSION_BG_COLORS[sessionTitle ?? ""] ?? "bg-primary/20 text-primary border-primary/30";
 
   return (
     <div className="flex flex-col min-h-screen pb-32">
@@ -140,7 +253,6 @@ export default function ActiveWorkoutPage({ params }: { params: Promise<{ logId:
           />
         ))}
 
-        {/* Rest timer */}
         <RestTimer />
       </div>
 
