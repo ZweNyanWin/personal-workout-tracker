@@ -129,25 +129,42 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-              {recentLogs.slice(0, 10).map((log: any) => (
-                <div key={log.id} className="flex items-center gap-3 px-4 py-3">
+              {recentLogs.slice(0, 20).map((log: any) => (
+                <Link
+                  key={log.id}
+                  href={`/log/${log.id}`}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors tap-none"
+                >
                   <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{log.title ?? "Workout"}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium">{log.title ?? "Workout"}</p>
+                      {log.session?.title && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${SESSION_BG_COLORS[log.session.title] ?? ""}`}
+                        >
+                          {log.session.title}
+                        </Badge>
+                      )}
+                      {log.energy_rating && (
+                        <span className="text-xs">
+                          {["😴","😕","😐","💪","🔥"][log.energy_rating - 1]}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {relativeDate(log.date)}
                       {log.duration_minutes ? ` · ${formatMinutes(log.duration_minutes)}` : ""}
                     </p>
+                    {log.notes && (
+                      <p className="text-xs text-muted-foreground mt-0.5 italic line-clamp-1">
+                        "{log.notes}"
+                      </p>
+                    )}
                   </div>
-                  {log.session?.title && (
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] ${SESSION_BG_COLORS[log.session.title] ?? ""}`}
-                    >
-                      {log.session.title}
-                    </Badge>
-                  )}
-                </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </Link>
               ))}
             </div>
           )}
