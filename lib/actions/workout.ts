@@ -504,6 +504,22 @@ export async function getWorkoutHistory(userId?: string) {
   return data ?? [];
 }
 
+// ─── Delete workout log ───────────────────────────────────────
+export async function deleteWorkoutLog(logId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Not authenticated" };
+  const { error } = await supabase
+    .from("workout_logs")
+    .delete()
+    .eq("id", logId)
+    .eq("user_id", user.id);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/history");
+  revalidatePath("/dashboard");
+  return { success: true, data: undefined };
+}
+
 // ─── Get previous performance for an exercise ─────────────────
 export async function getPreviousPerformance(exerciseId: string) {
   const supabase = await createClient();

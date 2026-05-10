@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/header";
 import { CheckCircle2, ChevronRight, Calendar } from "lucide-react";
 import { relativeDate, formatMinutes, SESSION_BG_COLORS } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { DeleteLogButton } from "@/components/history/delete-log-button";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "History" };
@@ -59,28 +60,32 @@ export default async function HistoryPage() {
                   const sessionTitle = (log as any).session?.title;
                   const colorClass = SESSION_BG_COLORS[sessionTitle ?? ""] ?? "";
                   return (
-                    <Link
-                      key={log.id}
-                      href={`/log/${log.id}`}
-                      className="flex items-center gap-3 px-4 py-3.5 hover:bg-accent transition-colors tap-none"
-                    >
-                      <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium">{log.title ?? "Workout"}</p>
-                          {sessionTitle && (
-                            <Badge className={`${colorClass} text-[10px] py-0`} variant="outline">
-                              {sessionTitle}
-                            </Badge>
-                          )}
+                    <div key={log.id} className="flex items-center hover:bg-accent transition-colors">
+                      <Link
+                        href={`/log/${log.id}`}
+                        className="flex-1 flex items-center gap-3 px-4 py-3.5 min-w-0 tap-none"
+                      >
+                        <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium">{log.title ?? "Workout"}</p>
+                            {sessionTitle && (
+                              <Badge className={`${colorClass} text-[10px] py-0`} variant="outline">
+                                {sessionTitle}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {relativeDate(log.date)}
+                            {log.duration_minutes ? ` · ${formatMinutes(log.duration_minutes)}` : ""}
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {relativeDate(log.date)}
-                          {log.duration_minutes ? ` · ${formatMinutes(log.duration_minutes)}` : ""}
-                        </p>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </Link>
+                      <div className="pr-3">
+                        <DeleteLogButton logId={log.id} />
                       </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
