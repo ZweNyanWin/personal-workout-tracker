@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getProgramDetail, createBlock, createSession, deleteSession } from "@/lib/actions/admin";
+import { getProgramDetail, createBlock, createSession, deleteSession, updateSession } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -150,8 +150,21 @@ export default function ProgramDetailPage() {
 
 // ─── Session Row ──────────────────────────────────────────────
 function SessionRow({ session: s, onDeleted }: { session: any; onDeleted: () => void }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState(s.title);
+  const [editNotes, setEditNotes] = useState(s.notes ?? "");
+  const [saving, startSave] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, startDelete] = useTransition();
+
+  function handleSave() {
+    if (!editTitle.trim()) { toast.error("Name required"); return; }
+    startSave(async () => {
+      const r = await updateSession(s.id, editTitle, editNotes);
+      if (r.success) { toast.success("Session updated"); setEditOpen(false); onDeleted(); }
+      else toast.error(r.error);
+    });
+  }
 
   function handleDelete() {
     startDelete(async () => {
@@ -162,37 +175,59 @@ function SessionRow({ session: s, onDeleted }: { session: any; onDeleted: () => 
   }
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3 hover:bg-accent/20 transition-colors">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{s.title}</p>
-        <p className="text-xs text-muted-foreground">
-          {s.exercises?.length ?? 0} exercises
-          {s.notes ? ` · ${s.notes}` : ""}
-        </p>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Link href={`/workout/${s.id}`}>
-          <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
-            <Pencil className="h-3 w-3" />
-            {s.exercises?.length ? "Edit" : "Add Exercises"}
-          </Button>
-        </Link>
-        {confirmDelete ? (
-          <>
-            <Button size="sm" variant="destructive" className="h-7 text-xs" loading={deleting} onClick={handleDelete}>
-              Confirm
+    <>
+      <div className="flex items-center gap-3 px-5 py-3 hover:bg-accent/20 transition-colors">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">{s.title}</p>
+          <p className="text-xs text-muted-foreground">
+            {s.exercises?.length ?? 0} exercises
+            {s.notes ? ` · ${s.notes}` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Link href={`/workout/${s.id}`}>
+            <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
+              <Pencil className="h-3 w-3" />
+              {s.exercises?.length ? "Edit" : "Add Exercises"}
             </Button>
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
-            <Trash2 className="h-3.5 w-3.5" />
+          </Link>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            onClick={() => { setEditTitle(s.title); setEditNotes(s.notes ?? ""); setEditOpen(true); }}>
+            <Pencil className="h-3.5 w-3.5" />
           </Button>
-        )}
+          {confirmDelete ? (
+            <>
+              <Button size="sm" variant="destructive" className="h-7 text-xs" loading={deleting} onClick={handleDelete}>Confirm</Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+            </>
+          ) : (
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Edit Session</DialogTitle></DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div className="space-y-1.5">
+              <Label>Session Name *</Label>
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes</Label>
+              <Input placeholder="Optional notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button variant="brand" className="flex-1" loading={saving} onClick={handleSave}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

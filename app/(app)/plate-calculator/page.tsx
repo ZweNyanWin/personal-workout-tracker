@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Standard plates in kg (per side), largest first
-const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5, 0.25];
+// Standard gym plates in kg (per side), largest first
+const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
 
 function calcPlates(targetKg: number, barKg: number): { plate: number; count: number }[] {
   let remaining = (targetKg - barKg) / 2;

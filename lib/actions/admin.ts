@@ -359,6 +359,18 @@ export async function deleteExercise(id: string): Promise<ActionResult> {
   return { success: true, data: undefined };
 }
 
+// ─── Update session (admin) ───────────────────────────────────
+export async function updateSession(sessionId: string, title: string, notes?: string): Promise<ActionResult> {
+  const { supabase } = await requireAdmin();
+  const { error } = await supabase
+    .from("program_sessions")
+    .update({ title: title.trim(), notes: notes?.trim() || null })
+    .eq("id", sessionId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/programs");
+  return { success: true, data: undefined };
+}
+
 // ─── Delete session (admin) ───────────────────────────────────
 export async function deleteSession(sessionId: string): Promise<ActionResult> {
   const { supabase } = await requireAdmin();
