@@ -362,9 +362,12 @@ export async function deleteExercise(id: string): Promise<ActionResult> {
 // ─── Delete program (admin) ──────────────────────────────────
 export async function deleteProgram(programId: string): Promise<ActionResult> {
   const { supabase } = await requireAdmin();
+  // Remove assignments first to satisfy the foreign key constraint
+  await supabase.from("user_program_assignments").delete().eq("program_id", programId);
   const { error } = await supabase.from("programs").delete().eq("id", programId);
   if (error) return { success: false, error: error.message };
   revalidatePath("/admin/programs");
+  revalidatePath("/admin/members");
   return { success: true, data: undefined };
 }
 
