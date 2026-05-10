@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getProgramDetail, createBlock, createSession, deleteSession, updateSession } from "@/lib/actions/admin";
+import { getProgramDetail, createBlock, createSession, deleteSession, updateSession, deleteBlock } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,8 @@ export default function ProgramDetailPage() {
   const router = useRouter();
   const [program, setProgram] = useState<any>(null);
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
+  const [confirmDeleteBlock, setConfirmDeleteBlock] = useState<string | null>(null);
+  const [deletingBlock, startDeleteBlock] = useTransition();
 
   function reload() {
     getProgramDetail(programId).then((data) => {
@@ -122,8 +124,24 @@ export default function ProgramDetailPage() {
                     : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                   }
                 </button>
-                <div className="px-3">
+                <div className="flex items-center gap-1 px-3">
                   <AddSessionDialog programId={programId} blockId={block.id} onDone={reload} />
+                  {confirmDeleteBlock === block.id ? (
+                    <>
+                      <Button size="sm" variant="destructive" className="h-7 text-xs" loading={deletingBlock}
+                        onClick={() => startDeleteBlock(async () => {
+                          const r = await deleteBlock(block.id);
+                          if (r.success) { toast.success("Block deleted"); setConfirmDeleteBlock(null); reload(); }
+                          else toast.error(r.error);
+                        })}>Confirm</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirmDeleteBlock(null)}>Cancel</Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setConfirmDeleteBlock(block.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               </div>
 
