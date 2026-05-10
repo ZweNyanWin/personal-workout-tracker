@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getAllPrograms, createProgram, createBlock, createSession, updateSession, deleteSession, deleteBlock } from "@/lib/actions/admin";
+import { getAllPrograms, createProgram, createBlock, createSession, updateSession, deleteSession, deleteBlock, deleteProgram } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -255,6 +255,8 @@ export default function ProgramsPage() {
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
   const [confirmDeleteBlock, setConfirmDeleteBlock] = useState<string | null>(null);
   const [deletingBlock, startDeleteBlock] = useTransition();
+  const [confirmDeleteProgram, setConfirmDeleteProgram] = useState<string | null>(null);
+  const [deletingProgram, startDeleteProgram] = useTransition();
 
   function reload() {
     getAllPrograms().then((data) => {
@@ -342,7 +344,25 @@ export default function ProgramsPage() {
                     <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{program.description}</p>
                   )}
                 </div>
-                <AddBlockDialog programId={program.id} onDone={reload} />
+                <div className="flex items-center gap-2 shrink-0">
+                  <AddBlockDialog programId={program.id} onDone={reload} />
+                  {confirmDeleteProgram === program.id ? (
+                    <>
+                      <Button size="sm" variant="destructive" className="h-8 text-xs" loading={deletingProgram}
+                        onClick={() => startDeleteProgram(async () => {
+                          const r = await deleteProgram(program.id);
+                          if (r.success) { toast.success("Program deleted"); setConfirmDeleteProgram(null); reload(); }
+                          else toast.error(r.error);
+                        })}>Confirm</Button>
+                      <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setConfirmDeleteProgram(null)}>Cancel</Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setConfirmDeleteProgram(program.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* No blocks state */}

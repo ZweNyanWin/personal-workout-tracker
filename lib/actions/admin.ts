@@ -359,6 +359,15 @@ export async function deleteExercise(id: string): Promise<ActionResult> {
   return { success: true, data: undefined };
 }
 
+// ─── Delete program (admin) ──────────────────────────────────
+export async function deleteProgram(programId: string): Promise<ActionResult> {
+  const { supabase } = await requireAdmin();
+  const { error } = await supabase.from("programs").delete().eq("id", programId);
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/admin/programs");
+  return { success: true, data: undefined };
+}
+
 // ─── Delete block (admin) ────────────────────────────────────
 export async function deleteBlock(blockId: string): Promise<ActionResult> {
   const { supabase } = await requireAdmin();
