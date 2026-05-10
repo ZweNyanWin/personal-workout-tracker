@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getProgramDetail, createBlock, createSession } from "@/lib/actions/admin";
+import { getProgramDetail, createBlock, createSession, deleteSession } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronRight,
   Pencil,
+  Trash2,
 } from "lucide-react";
 
 export default function ProgramDetailPage() {
@@ -135,27 +136,61 @@ export default function ProgramDetailPage() {
                     </div>
                   )}
                   {block.sessions?.map((s: any) => (
-                    <div key={s.id} className="flex items-center gap-3 px-5 py-3 hover:bg-accent/20 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">{s.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {s.exercises?.length ?? 0} exercises
-                          {s.notes ? ` · ${s.notes}` : ""}
-                        </p>
-                      </div>
-                      <Link href={`/workout/${s.id}`}>
-                        <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
-                          <Pencil className="h-3 w-3" />
-                          {s.exercises?.length ? "Edit" : "Add Exercises"}
-                        </Button>
-                      </Link>
-                    </div>
+                    <SessionRow key={s.id} session={s} onDeleted={reload} />
                   ))}
                 </div>
               )}
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Session Row ──────────────────────────────────────────────
+function SessionRow({ session: s, onDeleted }: { session: any; onDeleted: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, startDelete] = useTransition();
+
+  function handleDelete() {
+    startDelete(async () => {
+      const r = await deleteSession(s.id);
+      if (r.success) { toast.success("Session deleted"); onDeleted(); }
+      else toast.error(r.error);
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 hover:bg-accent/20 transition-colors">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">{s.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {s.exercises?.length ?? 0} exercises
+          {s.notes ? ` · ${s.notes}` : ""}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Link href={`/workout/${s.id}`}>
+          <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
+            <Pencil className="h-3 w-3" />
+            {s.exercises?.length ? "Edit" : "Add Exercises"}
+          </Button>
+        </Link>
+        {confirmDelete ? (
+          <>
+            <Button size="sm" variant="destructive" className="h-7 text-xs" loading={deleting} onClick={handleDelete}>
+              Confirm
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -89,6 +89,36 @@ export async function getDashboardData() {
     return acc + ((s.weight_kg ?? 0) * (s.reps ?? 0));
   }, 0) ?? 0;
 
+  // Streak: count consecutive days (most recent first) that have a completed workout
+  const { data: allLogDates } = await supabase
+    .from("workout_logs")
+    .select("date")
+    .eq("user_id", user.id)
+    .eq("status", "completed")
+    .order("date", { ascending: false });
+
+  let currentStreak = 0;
+  if (allLogDates && allLogDates.length > 0) {
+    const uniqueDates = [...new Set(allLogDates.map((l: any) => l.date as string))];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let cursor = new Date(today);
+    // Allow today or yesterday as the starting point (don't break streak if not yet worked out today)
+    const mostRecent = new Date(uniqueDates[0]);
+    mostRecent.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((today.getTime() - mostRecent.getTime()) / 86400000);
+    if (diffDays <= 1) {
+      cursor = mostRecent;
+      for (const dateStr of uniqueDates) {
+        const d = new Date(dateStr);
+        d.setHours(0, 0, 0, 0);
+        const gap = Math.round((cursor.getTime() - d.getTime()) / 86400000);
+        if (gap > 1) break;
+        if (gap === 0 || gap === 1) { currentStreak++; cursor = d; }
+      }
+    }
+  }
+
   return {
     profile: profileResult.data,
     activeAssignment: assignment,
@@ -99,6 +129,7 @@ export async function getDashboardData() {
     e1rmCards: Object.values(e1rmMap),
     recentPRs: prs ?? [],
     bodyweight: bodyweightResult.data,
+    currentStreak,
   };
 }
 
@@ -333,7 +364,8 @@ export async function deleteSet(setId: string): Promise<ActionResult> {
 export async function finishWorkout(
   logId: string,
   notes?: string,
-  bodyweight?: number
+  bodyweight?: number,
+  energyRating?: number
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -359,6 +391,7 @@ export async function finishWorkout(
       duration_minutes: durationMinutes,
       notes: notes ?? null,
       bodyweight_kg: bodyweight ?? null,
+      energy_rating: energyRating ?? null,
     })
     .eq("id", logId);
 

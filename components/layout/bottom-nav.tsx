@@ -9,15 +9,16 @@ import {
   History,
   User,
   ShieldCheck,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MEMBER_ITEMS = [
-  { href: "/dashboard",  label: "Home",     icon: LayoutDashboard },
-  { href: "/workout",    label: "Workout",  icon: Dumbbell },
-  { href: "/history",    label: "History",  icon: History },
-  { href: "/analytics",  label: "Stats",    icon: BarChart2 },
-  { href: "/profile",    label: "Profile",  icon: User },
+  { href: "/dashboard",         label: "Home",    icon: LayoutDashboard },
+  { href: "/workout",           label: "Workout", icon: Dumbbell },
+  { href: "/history",           label: "History", icon: History },
+  { href: "/plate-calculator",  label: "Plates",  icon: Calculator },
+  { href: "/profile",           label: "Profile", icon: User },
 ];
 
 const ADMIN_ITEMS = [

@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/header";
 import { NextSessionCard } from "@/components/dashboard/next-session-card";
 import { StatsRow } from "@/components/dashboard/stats-row";
 import { RecentWorkouts } from "@/components/dashboard/recent-workouts";
-import { Dumbbell, Scale } from "lucide-react";
+import { Dumbbell, Scale, Flame } from "lucide-react";
 import { formatWeight, relativeDate } from "@/lib/utils";
 import type { Metadata } from "next";
 
@@ -53,8 +53,23 @@ export default async function DashboardPage() {
           <StatsRow e1rmCards={data.e1rmCards} weeklyVolume={data.weeklyVolume} />
         </div>
 
-        {/* Bodyweight + recent PR row */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Streak + bodyweight + recent PR row */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Flame className="h-3.5 w-3.5" />
+              Streak
+            </div>
+            <p className="text-2xl font-bold font-num">
+              {data.currentStreak}
+              <span className="text-sm font-normal text-muted-foreground ml-1">
+                {data.currentStreak === 1 ? "day" : "days"}
+              </span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {data.currentStreak > 0 ? "Keep it up!" : "Start today"}
+            </p>
+          </div>
           <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Scale className="h-3.5 w-3.5" />

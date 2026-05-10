@@ -12,6 +12,7 @@ import {
   Users,
   Settings,
   ShieldCheck,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types";
@@ -21,8 +22,9 @@ const MEMBER_NAV = [
   { href: "/workout",    label: "Workout",    icon: Dumbbell },
   { href: "/history",    label: "History",    icon: History },
   { href: "/analytics",  label: "Analytics",  icon: BarChart2 },
-  { href: "/exercises",  label: "Exercises",  icon: BookOpen },
-  { href: "/profile",    label: "Profile",    icon: User },
+  { href: "/exercises",         label: "Exercises",        icon: BookOpen },
+  { href: "/plate-calculator",  label: "Plate Calculator",  icon: Calculator },
+  { href: "/profile",           label: "Profile",           icon: User },
 ];
 
 const ADMIN_NAV = [

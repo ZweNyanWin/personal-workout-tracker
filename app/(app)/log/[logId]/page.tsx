@@ -25,6 +25,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
   const [finishOpen, setFinishOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [bodyweight, setBodyweight] = useState("");
+  const [energyRating, setEnergyRating] = useState<number | null>(null);
   const [finishing, startFinish] = useTransition();
 
   const { formatted: elapsed } = useWorkoutTimer(log?.started_at ?? null);
@@ -50,7 +51,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
     if (!log) return;
     startFinish(async () => {
       const bw = bodyweight ? parseFloat(bodyweight) : undefined;
-      const result = await finishWorkout(logId, notes, bw);
+      const result = await finishWorkout(logId, notes, bw, energyRating ?? undefined);
       if (result.success) {
         toast.success("Workout completed! 💪");
         router.push("/dashboard");
@@ -183,11 +184,23 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
             </div>
           )}
 
-          {/* Notes */}
-          {(log as any).notes && (
-            <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
-              <p className="text-sm">{(log as any).notes}</p>
+          {/* Energy rating + notes */}
+          {((log as any).energy_rating || (log as any).notes) && (
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              {(log as any).energy_rating && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Energy</p>
+                  <p className="text-sm">
+                    {["😴 Drained", "😕 Low", "😐 OK", "💪 Good", "🔥 Great"][(log as any).energy_rating - 1]}
+                  </p>
+                </div>
+              )}
+              {(log as any).notes && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
+                  <p className="text-sm">{(log as any).notes}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -276,6 +289,32 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
             <DialogTitle>Finish Workout</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>How did you feel?</Label>
+              <div className="flex gap-2">
+                {[
+                  { value: 1, emoji: "😴", label: "Drained" },
+                  { value: 2, emoji: "😕", label: "Low" },
+                  { value: 3, emoji: "😐", label: "OK" },
+                  { value: 4, emoji: "💪", label: "Good" },
+                  { value: 5, emoji: "🔥", label: "Great" },
+                ].map(({ value, emoji, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setEnergyRating(energyRating === value ? null : value)}
+                    className={`flex-1 flex flex-col items-center gap-0.5 rounded-lg border py-2 text-xs transition-colors tap-none ${
+                      energyRating === value
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/30"
+                    }`}
+                  >
+                    <span className="text-lg">{emoji}</span>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label>Bodyweight today (optional)</Label>
               <div className="flex gap-2 items-center">
