@@ -33,27 +33,15 @@ export default async function WorkoutPage() {
     .maybeSingle();
 
   let sessions: any[] = [];
-  let completedSessionIds = new Set<string>();
 
   if (assignment) {
-    const today = new Date().toISOString().split("T")[0];
+    const { data } = await supabase
+      .from("program_sessions")
+      .select("*, block:program_blocks(title), exercises:session_exercises(id)")
+      .eq("program_id", assignment.program_id)
+      .order("session_order", { ascending: true });
 
-    const [sessionsResult, logsResult] = await Promise.all([
-      supabase
-        .from("program_sessions")
-        .select("*, block:program_blocks(title), exercises:session_exercises(id)")
-        .eq("program_id", assignment.program_id)
-        .order("session_order", { ascending: true }),
-      supabase
-        .from("workout_logs")
-        .select("session_id")
-        .eq("user_id", user.id)
-        .eq("status", "completed")
-        .gte("date", today),
-    ]);
-
-    sessions = sessionsResult.data ?? [];
-    completedSessionIds = new Set((logsResult.data ?? []).map((l: any) => l.session_id));
+    sessions = data ?? [];
   }
 
   const currentIdx = assignment?.current_session_index ?? 0;
@@ -82,8 +70,9 @@ export default async function WorkoutPage() {
 
             <div className="space-y-3">
               {sessions.map((session, idx) => {
-                const isNext = idx === currentIdx % totalSessions;
-                const isDone = completedSessionIds.has(session.id);
+                const currentCycleIdx = totalSessions > 0 ? currentIdx % totalSessions : 0;
+                const isNext = idx === currentCycleIdx;
+                const isDone = idx < currentCycleIdx;
                 const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
 
                 return (

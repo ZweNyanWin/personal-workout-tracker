@@ -616,54 +616,38 @@ export async function unmarkSessionDone(sessionId: string): Promise<ActionResult
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  const today = new Date().toISOString().split("T")[0];
-
-  // Grab one log to get assignment_id before deleting
-  const { data: log } = await supabase
-    .from("workout_logs")
-    .select("id, assignment_id")
+  const { data: assignment } = await supabase
+    .from("user_program_assignments")
+    .select("id, current_session_index, program_id")
     .eq("user_id", user.id)
-    .eq("session_id", sessionId)
-    .gte("date", today)
-    .order("date", { ascending: false })
-    .limit(1)
+    .eq("is_active", true)
     .maybeSingle();
 
-  if (!log) return { success: false, error: "No workout found for today" };
+  if (!assignment) return { success: false, error: "No active program" };
 
-  // Delete ALL logs for this session today (in_progress + completed)
-  const { error } = await supabase
+  // Delete any quick-mark log (duration_minutes = 0) — preserves real logged workouts
+  await supabase
     .from("workout_logs")
     .delete()
     .eq("user_id", user.id)
     .eq("session_id", sessionId)
-    .gte("date", today);
-
-  if (error) return { success: false, error: error.message };
+    .eq("duration_minutes", 0);
 
   // Decrement session index
-  if (log.assignment_id) {
-    const { data: assignment } = await supabase
-      .from("user_program_assignments")
-      .select("current_session_index, program_id")
-      .eq("id", log.assignment_id)
-      .single();
+  const { data: sessions } = await supabase
+    .from("program_sessions")
+    .select("id")
+    .eq("program_id", assignment.program_id);
 
-    if (assignment) {
-      const { data: sessions } = await supabase
-        .from("program_sessions")
-        .select("id")
-        .eq("program_id", assignment.program_id);
+  const total = sessions?.length ?? 4;
+  const prevIndex = (assignment.current_session_index - 1 + total) % total;
 
-      const total = sessions?.length ?? 4;
-      const prevIndex = (assignment.current_session_index - 1 + total) % total;
+  const { error } = await supabase
+    .from("user_program_assignments")
+    .update({ current_session_index: prevIndex })
+    .eq("id", assignment.id);
 
-      await supabase
-        .from("user_program_assignments")
-        .update({ current_session_index: prevIndex })
-        .eq("id", log.assignment_id);
-    }
-  }
+  if (error) return { success: false, error: error.message };
 
   revalidatePath("/workout");
   revalidatePath("/dashboard");

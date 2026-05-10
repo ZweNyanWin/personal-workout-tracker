@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Circle } from "lucide-react";
 import { markSessionDone, unmarkSessionDone } from "@/lib/actions/workout";
@@ -12,27 +12,20 @@ export function MarkDoneButton({
   sessionId: string;
   isDone: boolean;
 }) {
-  const [done, setDone] = useState(isDone);
   const [pending, startTransition] = useTransition();
+  // While the action is in-flight, show the optimistic opposite state
+  const displayDone = pending ? !isDone : isDone;
 
   function toggle() {
     startTransition(async () => {
-      if (done) {
+      if (isDone) {
         const result = await unmarkSessionDone(sessionId);
-        if (result.success) {
-          setDone(false);
-          toast.success("Unmarked — ready to log fresh");
-        } else {
-          toast.error(result.error);
-        }
+        if (!result.success) toast.error(result.error);
+        else toast.success("Unmarked — ready to log fresh");
       } else {
         const result = await markSessionDone(sessionId);
-        if (result.success) {
-          setDone(true);
-          toast.success("Session marked as done");
-        } else {
-          toast.error(result.error);
-        }
+        if (!result.success) toast.error(result.error);
+        else toast.success("Session marked as done");
       }
     });
   }
@@ -41,14 +34,14 @@ export function MarkDoneButton({
     <button
       onClick={toggle}
       disabled={pending}
-      title={done ? "Unmark as done" : "Mark as done"}
+      title={displayDone ? "Unmark as done" : "Mark as done"}
       className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors tap-none disabled:opacity-50 ${
-        done
+        displayDone
           ? "text-success hover:bg-success/10"
           : "text-muted-foreground hover:bg-accent hover:text-foreground"
       }`}
     >
-      {done ? (
+      {displayDone ? (
         <CheckCircle2 className="h-5 w-5" />
       ) : (
         <Circle className="h-5 w-5" />
