@@ -50,8 +50,8 @@ export function Sidebar({ profile }: SidebarProps) {
         className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors tap-none",
           active
-            ? "bg-primary/15 text-primary"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            ? "bg-primary/18 text-primary shadow-[inset_3px_0_0_var(--color-primary)]"
+            : "text-muted-foreground hover:bg-accent/80 hover:text-foreground"
         )}
       >
         <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2.5 : 2} />
@@ -61,10 +61,10 @@ export function Sidebar({ profile }: SidebarProps) {
   }
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-border bg-card">
+    <aside className="flex h-full w-60 flex-col border-r border-border bg-card/92 shadow-2xl shadow-black/20">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 px-4 border-b border-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+      <div className="flex h-16 items-center gap-3 px-4 border-b border-border bg-gradient-to-r from-primary/18 via-card to-secondary/45">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
           <Dumbbell className="h-5 w-5 text-primary-foreground" />
         </div>
         <div>

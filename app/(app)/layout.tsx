@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden bg-background/72">
         {/* Scrollable content area */}
         <main className="flex-1 overflow-y-auto pb-nav md:pb-0">
           {children}
