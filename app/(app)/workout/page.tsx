@@ -4,9 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MarkDoneButton } from "@/components/workout/mark-done-button";
 import { SESSION_BG_COLORS } from "@/lib/utils";
-import { Play, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Workout" };
@@ -37,15 +36,25 @@ export default async function WorkoutPage() {
   if (assignment) {
     const { data } = await supabase
       .from("program_sessions")
-      .select("*, block:program_blocks(title), exercises:session_exercises(id)")
+      .select("*, block:program_blocks(title, order_index), exercises:session_exercises(id)")
       .eq("program_id", assignment.program_id)
       .order("session_order", { ascending: true });
 
     sessions = data ?? [];
   }
 
-  const currentIdx = assignment?.current_session_index ?? 0;
   const totalSessions = sessions.length;
+  const totalWeeks = new Set(
+    sessions
+      .map((session) => session.block?.order_index)
+      .filter((weekIndex) => weekIndex != null)
+  ).size;
+
+  function weekLabel(session: any) {
+    if (!session.block) return "Week";
+    const weekNumber = session.block.order_index != null ? session.block.order_index + 1 : null;
+    return weekNumber ? `Week ${weekNumber}` : session.block.title;
+  }
 
   return (
     <div className="flex flex-col">
@@ -63,45 +72,30 @@ export default async function WorkoutPage() {
               <div>
                 <h2 className="text-lg font-bold">{(assignment as any).program?.title}</h2>
                 <p className="text-sm text-muted-foreground">
-                  Session {(currentIdx % totalSessions) + 1} of {totalSessions} next
+                  {totalSessions} sessions{totalWeeks ? ` across ${totalWeeks} weeks` : ""}
                 </p>
               </div>
             </div>
 
             <div className="space-y-3">
               {sessions.map((session, idx) => {
-                const currentCycleIdx = totalSessions > 0 ? currentIdx % totalSessions : 0;
-                const isNext = idx === currentCycleIdx;
-                const isDone = idx < currentCycleIdx;
                 const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
+                const week = weekLabel(session);
 
                 return (
                   <div
                     key={session.id}
-                    className={`rounded-xl border p-4 transition-colors ${
-                      isDone
-                        ? "border-success/30 bg-success/5"
-                        : isNext
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border bg-card"
-                    }`}
+                    className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/30"
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {week}
+                          </Badge>
                           <Badge className={colorClass} variant="outline">
                             {session.title}
                           </Badge>
-                          {isNext && !isDone && (
-                            <Badge variant="brand" className="text-[10px]">
-                              Next
-                            </Badge>
-                          )}
-                          {isDone && (
-                            <Badge variant="secondary" className="text-[10px] text-success border-success/30">
-                              Done
-                            </Badge>
-                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
                           {session.exercises?.length ?? 0} exercises
@@ -112,20 +106,11 @@ export default async function WorkoutPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <MarkDoneButton sessionId={session.id} isDone={isDone} />
                         <Link href={`/workout/${session.id}`}>
                           <Button variant="ghost" size="icon-sm">
                             <Eye className="h-5 w-5" />
                           </Button>
                         </Link>
-                        {isNext && !isDone && (
-                          <Link href={`/log/new?session=${session.id}`}>
-                            <Button size="sm" variant="brand">
-                              <Play className="h-4 w-4" />
-                              Start
-                            </Button>
-                          </Link>
-                        )}
                       </div>
                     </div>
                   </div>

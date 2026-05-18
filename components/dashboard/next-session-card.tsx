@@ -1,10 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Play, ChevronRight, Zap } from "lucide-react";
-import { toast } from "sonner";
-import { startWorkout } from "@/lib/actions/workout";
+import { ChevronRight, Eye, Zap } from "lucide-react";
 import { SESSION_BG_COLORS } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,19 +15,6 @@ interface NextSessionCardProps {
 
 export function NextSessionCard({ session, assignment, totalSessions }: NextSessionCardProps) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  function handleStart() {
-    if (!session) return;
-    startTransition(async () => {
-      const result = await startWorkout(session.id);
-      if (result.success) {
-        router.push(`/log/${result.data}`);
-      } else {
-        toast.error(result.error);
-      }
-    });
-  }
 
   if (!session || !assignment) {
     return (
@@ -71,14 +55,13 @@ export function NextSessionCard({ session, assignment, totalSessions }: NextSess
         </div>
 
         <Button
-          onClick={handleStart}
-          loading={pending}
+          onClick={() => router.push(`/workout/${session.id}`)}
           className="w-full mt-4"
           size="lg"
           variant="brand"
         >
-          <Play className="h-4 w-4" />
-          Start Workout
+          <Eye className="h-4 w-4" />
+          View Session
         </Button>
 
         <button

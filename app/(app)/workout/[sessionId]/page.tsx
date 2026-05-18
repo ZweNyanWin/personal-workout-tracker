@@ -29,6 +29,7 @@ import {
   Pencil,
 } from "lucide-react";
 import type { Exercise } from "@/types";
+import { createClient } from "@/lib/supabase/client";
 
 type SessionExerciseRow = {
   id: string;
@@ -59,6 +60,7 @@ export default function SessionDetailPage() {
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SessionExerciseRow | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [saving, startSave] = useTransition();
   const [updating, startUpdate] = useTransition();
   const [removing, startRemove] = useTransition();
@@ -90,6 +92,16 @@ export default function SessionDetailPage() {
       if (data) setSession(data as SessionData);
     });
     getAllExercises(true).then(setAllExercises);
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single()
+        .then(({ data }) => setIsAdmin(data?.role === "admin"));
+    });
   }, [sessionId]);
 
   const filteredExercises = allExercises.filter((ex) =>
@@ -219,56 +231,57 @@ export default function SessionDetailPage() {
             </p>
           )}
         </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" variant="brand">
-              <Plus className="h-4 w-4" />
-              Add Exercise
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Add Exercise to Session</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 mt-2">
-              {/* Exercise search */}
-              <div className="space-y-1.5">
-                <Label>Exercise *</Label>
-                <Input
-                  placeholder="Search exercises…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                  {filteredExercises.length === 0 && (
-                    <p className="p-3 text-sm text-muted-foreground text-center">
-                      No exercises found
+        {isAdmin && (
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="brand">
+                <Plus className="h-4 w-4" />
+                Add Exercise
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add Exercise to Session</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-2">
+                {/* Exercise search */}
+                <div className="space-y-1.5">
+                  <Label>Exercise *</Label>
+                  <Input
+                    placeholder="Search exercises…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  <div className="max-h-48 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    {filteredExercises.length === 0 && (
+                      <p className="p-3 text-sm text-muted-foreground text-center">
+                        No exercises found
+                      </p>
+                    )}
+                    {filteredExercises.map((ex) => (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        onClick={() => setSelectedExId(ex.id)}
+                        className={`w-full text-left px-3 py-2 text-sm transition-colors tap-none ${
+                          selectedExId === ex.id
+                            ? "bg-primary/20 text-primary"
+                            : "hover:bg-accent text-foreground"
+                        }`}
+                      >
+                        <span className="font-medium">{ex.name}</span>
+                        <span className="ml-2 text-xs text-muted-foreground capitalize">
+                          {ex.equipment}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedExId && (
+                    <p className="text-xs text-primary">
+                      Selected: {allExercises.find((e) => e.id === selectedExId)?.name}
                     </p>
                   )}
-                  {filteredExercises.map((ex) => (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      onClick={() => setSelectedExId(ex.id)}
-                      className={`w-full text-left px-3 py-2 text-sm transition-colors tap-none ${
-                        selectedExId === ex.id
-                          ? "bg-primary/20 text-primary"
-                          : "hover:bg-accent text-foreground"
-                      }`}
-                    >
-                      <span className="font-medium">{ex.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground capitalize">
-                        {ex.equipment}
-                      </span>
-                    </button>
-                  ))}
                 </div>
-                {selectedExId && (
-                  <p className="text-xs text-primary">
-                    Selected: {allExercises.find((e) => e.id === selectedExId)?.name}
-                  </p>
-                )}
-              </div>
 
               {/* Prescription */}
               <div className="grid grid-cols-2 gap-3">
@@ -366,20 +379,22 @@ export default function SessionDetailPage() {
                 </Label>
               </div>
 
-              <Button
-                type="button"
-                className="w-full"
-                loading={saving}
-                onClick={handleAdd}
-              >
-                Add to Session
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+                <Button
+                  type="button"
+                  className="w-full"
+                  loading={saving}
+                  onClick={handleAdd}
+                >
+                  Add to Session
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Edit exercise dialog */}
+      {isAdmin && (
       <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null); }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -434,6 +449,7 @@ export default function SessionDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Session notes */}
       {session.notes && (
@@ -470,9 +486,15 @@ export default function SessionDetailPage() {
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <Dumbbell className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">No exercises in this session.</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Tap "Add Exercise" to build this session.
-            </p>
+            {isAdmin ? (
+              <p className="text-sm text-muted-foreground mt-1">
+                Tap "Add Exercise" to build this session.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-1">
+                Your coach has not added exercises to this session yet.
+              </p>
+            )}
           </div>
         ) : (
           session.exercises.map((se, idx) => {
@@ -500,19 +522,23 @@ export default function SessionDetailPage() {
                   {se.is_warmup && (
                     <Badge variant="secondary" className="text-[10px] py-0">Warmup</Badge>
                   )}
-                  <button
-                    onClick={() => openEdit(se)}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors tap-none"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleRemove(se.id, se.exercise.name)}
-                    disabled={removing}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors tap-none"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {isAdmin && (
+                    <>
+                      <button
+                        onClick={() => openEdit(se)}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors tap-none"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleRemove(se.id, se.exercise.name)}
+                        disabled={removing}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors tap-none"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Prescription grid */}
