@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getMemberDetail, assignProgram, updateMemberRole, getAllPrograms } from "@/lib/actions/admin";
+import { getMemberDetail, assignProgram, getAllPrograms } from "@/lib/actions/admin";
 import type { Tables } from "@/types/database";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PasteAssignDialog } from "./paste-assign-dialog";
 import { getInitials, relativeDate, formatMinutes, SESSION_BG_COLORS } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CheckCircle2, ChevronRight, Pencil, History } from "lucide-react";
@@ -91,7 +92,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
           {/* Assign program */}
           <form className="mt-3">
             <input type="hidden" name="userId" value={userId} />
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <select
                 name="programId"
                 className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -114,6 +115,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
               >
                 Assign
               </Button>
+              <PasteAssignDialog userId={userId} />
             </div>
           </form>
         </div>

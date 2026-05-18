@@ -117,6 +117,18 @@ export async function assignProgram(
 ): Promise<ActionResult> {
   const { supabase, user } = await requireAdmin();
 
+  const result = await assignProgramForUser(supabase, user.id, userId, programId);
+  if (!result.success) return result;
+  revalidatePath(`/admin/members/${userId}`);
+  return { success: true, data: undefined };
+}
+
+async function assignProgramForUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  adminUserId: string,
+  userId: string,
+  programId: string
+): Promise<ActionResult> {
   // Deactivate existing active assignments
   await supabase
     .from("user_program_assignments")
@@ -131,7 +143,7 @@ export async function assignProgram(
       {
         user_id: userId,
         program_id: programId,
-        assigned_by: user.id,
+        assigned_by: adminUserId,
         is_active: true,
         current_session_index: 0,
       },
@@ -139,7 +151,6 @@ export async function assignProgram(
     );
 
   if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/members/${userId}`);
   return { success: true, data: undefined };
 }
 
@@ -281,6 +292,52 @@ export async function importProgramTemplate(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create program",
+    };
+  }
+}
+
+// ─── Paste import and immediately assign to one member ────────
+export async function importAndAssignProgramTemplate(
+  userId: string,
+  payload: {
+    title?: string;
+    rawText: string;
+    addStrengthExposureSingles?: boolean;
+    strengthExposurePercent?: number;
+  }
+): Promise<ActionResult<string>> {
+  const { supabase, user } = await requireAdmin();
+
+  let parsed;
+  try {
+    parsed = parseProgramTemplateText(
+      payload.rawText,
+      payload.title,
+      {
+        enabled: Boolean(payload.addStrengthExposureSingles),
+        percent1rm: payload.strengthExposurePercent ?? 82.5,
+      }
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Could not parse template",
+    };
+  }
+
+  try {
+    const programId = await createProgramFromParsedTemplate(supabase, user.id, parsed);
+    const assigned = await assignProgramForUser(supabase, user.id, userId, programId);
+    if (!assigned.success) return { success: false, error: assigned.error };
+
+    revalidatePath(`/admin/members/${userId}`);
+    revalidatePath("/admin/members");
+    revalidatePath("/admin/programs");
+    return { success: true, data: programId };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to import and assign program",
     };
   }
 }
