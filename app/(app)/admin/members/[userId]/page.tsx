@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getMemberDetail, assignProgram, getAllPrograms } from "@/lib/actions/admin";
+import { getMemberDetail, assignProgram, getProgramOptions } from "@/lib/actions/admin";
 import type { Tables } from "@/types/database";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
 
   const { data: adminProfile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, email, full_name, username, avatar_url, role, created_at, updated_at")
     .eq("id", user.id)
     .single();
 
@@ -31,7 +31,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
 
   const [detail, programs] = await Promise.all([
     getMemberDetail(userId),
-    getAllPrograms(),
+    getProgramOptions(),
   ]);
 
   if (!detail.profile) redirect("/admin/members");

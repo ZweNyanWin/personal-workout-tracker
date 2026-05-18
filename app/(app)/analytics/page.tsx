@@ -26,7 +26,7 @@ export default async function AnalyticsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, email, full_name, username, avatar_url, role, created_at, updated_at")
     .eq("id", user.id)
     .single();
 

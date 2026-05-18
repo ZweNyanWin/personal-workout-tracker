@@ -19,7 +19,7 @@ export default async function WorkoutPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, email, full_name, username, avatar_url, role, created_at, updated_at")
     .eq("id", user.id)
     .single();
 
@@ -27,7 +27,7 @@ export default async function WorkoutPage() {
 
   const { data: assignment } = await supabase
     .from("user_program_assignments")
-    .select("*, program:programs(*)")
+    .select("id, user_id, program_id, is_active, current_session_index, program:programs(id, title, description)")
     .eq("user_id", user.id)
     .eq("is_active", true)
     .maybeSingle();

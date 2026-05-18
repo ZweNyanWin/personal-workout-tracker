@@ -29,7 +29,11 @@ export default function ProfilePage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      supabase.from("profiles").select("*").eq("id", user.id).single()
+      supabase
+        .from("profiles")
+        .select("id, email, full_name, username, avatar_url, role, created_at, updated_at")
+        .eq("id", user.id)
+        .single()
         .then(({ data }) => {
           if (data) {
             setProfile(data);

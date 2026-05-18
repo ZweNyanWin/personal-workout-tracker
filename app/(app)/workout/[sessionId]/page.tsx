@@ -29,7 +29,6 @@ import {
   Pencil,
 } from "lucide-react";
 import type { Exercise } from "@/types";
-import { createClient } from "@/lib/supabase/client";
 
 type SessionExerciseRow = {
   id: string;
@@ -50,6 +49,7 @@ type SessionData = {
   notes: string | null;
   block: { title: string; order_index: number } | null;
   exercises: SessionExerciseRow[];
+  viewer_role?: string;
 };
 
 export default function SessionDetailPage() {
@@ -89,18 +89,12 @@ export default function SessionDetailPage() {
   useEffect(() => {
     if (!sessionId) return;
     getSessionWithExercises(sessionId).then((data) => {
-      if (data) setSession(data as SessionData);
-    });
-    getAllExercises(true).then(setAllExercises);
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single()
-        .then(({ data }) => setIsAdmin(data?.role === "admin"));
+      if (data) {
+        setSession(data as SessionData);
+        const viewerIsAdmin = (data as SessionData).viewer_role === "admin";
+        setIsAdmin(viewerIsAdmin);
+        if (viewerIsAdmin) getAllExercises(true).then(setAllExercises);
+      }
     });
   }, [sessionId]);
 

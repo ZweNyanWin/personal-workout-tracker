@@ -31,7 +31,7 @@ export async function getAllMembers() {
 
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, email, full_name, username, role, created_at")
     .order("created_at", { ascending: true });
 
   if (!profiles) return [];
@@ -39,7 +39,7 @@ export async function getAllMembers() {
   // Get active assignments for all users
   const { data: assignments } = await supabase
     .from("user_program_assignments")
-    .select("*, program:programs(title)")
+    .select("id, user_id, program_id, is_active, current_session_index, program:programs(title)")
     .eq("is_active", true)
     .in("user_id", profiles.map((p) => p.id));
 
@@ -53,7 +53,8 @@ export async function getAllMembers() {
     .select("user_id, date")
     .eq("status", "completed")
     .in("user_id", profiles.map((p) => p.id))
-    .order("date", { ascending: false });
+    .order("date", { ascending: false })
+    .limit(200);
 
   const lastLogMap = new Map<string, string>();
   for (const log of lastLogs ?? []) {
@@ -72,15 +73,19 @@ export async function getMemberDetail(memberId: string) {
   const { supabase } = await requireAdmin();
 
   const [profileResult, assignmentsResult, recentLogsResult] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", memberId).single(),
+    supabase
+      .from("profiles")
+      .select("id, email, full_name, username, avatar_url, role, created_at")
+      .eq("id", memberId)
+      .single(),
     supabase
       .from("user_program_assignments")
-      .select("*, program:programs(*)")
+      .select("id, user_id, program_id, assigned_by, is_active, current_session_index, created_at, started_at, program:programs(id, title, description)")
       .eq("user_id", memberId)
       .order("created_at", { ascending: false }),
     supabase
       .from("workout_logs")
-      .select("*, session:program_sessions(title)")
+      .select("id, title, date, duration_minutes, energy_rating, notes, status, session:program_sessions(title)")
       .eq("user_id", memberId)
       .order("date", { ascending: false })
       .limit(20),
@@ -232,7 +237,18 @@ export async function getAllPrograms() {
 
   const { data } = await supabase
     .from("programs")
-    .select("*, blocks:program_blocks(*, sessions:program_sessions(*, exercises:session_exercises(id)))")
+    .select("id, title, description, is_template, created_at, blocks:program_blocks(id, title, order_index, duration_weeks, sessions:program_sessions(id, title, notes, session_order, exercises:session_exercises(id)))")
+    .order("created_at", { ascending: false });
+
+  return data ?? [];
+}
+
+export async function getProgramOptions() {
+  const { supabase } = await requireAdmin();
+
+  const { data } = await supabase
+    .from("programs")
+    .select("id, title")
     .order("created_at", { ascending: false });
 
   return data ?? [];
@@ -644,11 +660,20 @@ export async function removeSessionExercise(seId: string): Promise<ActionResult>
 export async function getSessionWithExercises(sessionId: string) {
   const supabase = await createClient();
 
-  const { data: session } = await supabase
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const [sessionResult, profileResult] = await Promise.all([
+    supabase
     .from("program_sessions")
     .select("*, block:program_blocks(title, order_index)")
     .eq("id", sessionId)
-    .single();
+      .single(),
+    user
+      ? supabase.from("profiles").select("role").eq("id", user.id).single()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const session = sessionResult.data;
 
   if (!session) return null;
 
@@ -658,7 +683,11 @@ export async function getSessionWithExercises(sessionId: string) {
     .eq("session_id", sessionId)
     .order("order_index", { ascending: true });
 
-  return { ...session, exercises: exercises ?? [] };
+  return {
+    ...session,
+    exercises: exercises ?? [],
+    viewer_role: profileResult.data?.role ?? "member",
+  };
 }
 
 // ─── Update session exercise (admin) ──────────────────────────
