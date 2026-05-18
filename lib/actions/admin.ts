@@ -7,6 +7,7 @@ import {
   canonicalExerciseName,
   normalizeExerciseKey,
   parseProgramTemplateText,
+  type ParsedProgramTemplate,
 } from "@/lib/program-template-parser";
 
 async function requireAdmin() {
@@ -272,19 +273,71 @@ export async function importProgramTemplate(
     };
   }
 
+  try {
+    const programId = await createProgramFromParsedTemplate(supabase, user.id, parsed);
+    revalidatePath("/admin/programs");
+    return { success: true, data: programId };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create program",
+    };
+  }
+}
+
+// ─── Create coach starter templates ───────────────────────────
+export async function createStarterTemplates(): Promise<ActionResult<{ created: number; skipped: number }>> {
+  const { supabase, user } = await requireAdmin();
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const template of STARTER_TEMPLATE_TEXTS) {
+    const { data: existing } = await supabase
+      .from("programs")
+      .select("id")
+      .eq("title", template.title)
+      .maybeSingle();
+
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const parsed = parseProgramTemplateText(template.text, template.title);
+      await createProgramFromParsedTemplate(supabase, user.id, parsed);
+      created += 1;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : `Failed to create ${template.title}`,
+      };
+    }
+  }
+
+  revalidatePath("/admin/programs");
+  return { success: true, data: { created, skipped } };
+}
+
+async function createProgramFromParsedTemplate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  parsed: ParsedProgramTemplate
+) {
   const { data: program, error: programError } = await supabase
     .from("programs")
     .insert({
       title: parsed.title,
       description: parsed.description,
-      created_by: user.id,
+      created_by: userId,
       is_template: true,
     })
     .select("id")
     .single();
 
   if (programError || !program) {
-    return { success: false, error: programError?.message ?? "Failed to create program" };
+    throw new Error(programError?.message ?? "Failed to create program");
   }
 
   const exerciseIdByName = await buildExerciseLookup(supabase);
@@ -303,7 +356,7 @@ export async function importProgramTemplate(
       .single();
 
     if (blockError || !block) {
-      return { success: false, error: blockError?.message ?? `Failed to create ${week.title}` };
+      throw new Error(blockError?.message ?? `Failed to create ${week.title}`);
     }
 
     for (const session of week.sessions) {
@@ -320,28 +373,17 @@ export async function importProgramTemplate(
         .single();
 
       if (sessionError || !createdSession) {
-        return {
-          success: false,
-          error: sessionError?.message ?? `Failed to create ${session.title}`,
-        };
+        throw new Error(sessionError?.message ?? `Failed to create ${session.title}`);
       }
 
       const rows = [];
       for (const [exerciseIndex, exercise] of session.exercises.entries()) {
-        let exerciseId: string;
-        try {
-          exerciseId = await getOrCreateExerciseId(
-            supabase,
-            user.id,
-            exercise.name,
-            exerciseIdByName
-          );
-        } catch (error) {
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : `Failed to create ${exercise.name}`,
-          };
-        }
+        const exerciseId = await getOrCreateExerciseId(
+          supabase,
+          userId,
+          exercise.name,
+          exerciseIdByName
+        );
 
         rows.push({
           session_id: createdSession.id,
@@ -360,15 +402,14 @@ export async function importProgramTemplate(
 
       if (rows.length > 0) {
         const { error: exerciseError } = await supabase.from("session_exercises").insert(rows);
-        if (exerciseError) return { success: false, error: exerciseError.message };
+        if (exerciseError) throw new Error(exerciseError.message);
       }
 
       sessionOrder += 1;
     }
   }
 
-  revalidatePath("/admin/programs");
-  return { success: true, data: program.id };
+  return program.id;
 }
 
 // ─── Manage exercises ─────────────────────────────────────────
@@ -585,6 +626,232 @@ export async function updateSessionExercise(
   revalidatePath("/admin/programs");
   return { success: true, data: undefined };
 }
+
+const STARTER_TEMPLATE_TEXTS = [
+  {
+    title: "4-Week Hypertrophy Template",
+    text: `4-Week Hypertrophy Template
+Focus: Hypertrophy, technique, rebuilding after heavy singles.
+WEEK 1 (Hypertrophy Base) Day 1 - Upper A
+1. Bench: 3x5 @ 72.5% (leave 1-2 reps in tank)
+2. Weighted Pull-ups: 4x6 @ 1 RIR
+3. Incline Smith Press: 2x8 @ RPE 8 (last set technical failure)
+4. Chest-Supported Row: 2x8-12 (last set to failure)
+5. Cable Fly / Pec Deck: 2x12-15 (last set to failure)
+6. Tricep Pushdown: 2x10-15 (last set to failure)
+Day 2 - Lower A
+1. High-Bar Squat: 3x6 @ 70% (smooth, no grinding)
+2. Paused High-Bar Squat: 2x4 @ 65%
+3. RDL: 3x8 @ RPE 7
+4. Leg Press: 2x10-15 (last set to failure)
+5. Leg Extension: 2x12-15 (last set to failure)
+Day 3 - Upper B
+1. Larsen Press: 3x8 @ 70% (leave 1-2 reps in tank)
+2. Pull-ups: 3x10 @ 1 RIR
+3. Close-Grip Bench: 2x10 @ 67.5%
+4. Lat Pulldown: 2x10-15 (last set to failure)
+5. Lateral Raise: 2x12-20 (last set to failure)
+6. Curls: 2x10-15 (last set to failure)
+Day 4 - Lower B
+1. Tempo High-Bar Squat: 3x5 @ 65%
+2. RDL: 3x6 @ RPE 7.5
+3. Hamstring Curl: 2x10-15 (last set to failure)
+4. Bulgarian Split Squat: 2x8-12 (last set to failure)
+5. Abs: 2x10-15 (last set to failure)
+WEEK 2 (Small Step Up)
+* Upper A: Bench: 3x5 @ 75% | Weighted Pull-ups: 4x6 @ RPE 8 | Incline Smith Press: 2x8 @ RPE 8.5 | Accessories: last set failure
+* Lower A: High-Bar Squat: 3x6 @ 72.5% | Paused High-Bar Squat: 2x4 @ 67.5% | RDL: 3x8 @ RPE 7.5 | Accessories: last set failure
+* Upper B: Larsen Press: 3x8 @ 72.5% | Pull-ups: 3x10 @ RPE 8 | Close-Grip Bench: 2x10 @ 70% | Accessories: last set failure
+* Lower B: Tempo High-Bar Squat: 3x5 @ 67.5% | RDL: 3x6 @ RPE 8 | Accessories: last set failure
+WEEK 3 (Safe Hard)
+* Upper A: Bench: 3x5 @ 77.5% | Weighted Pull-ups: 4x6 @ RPE 8.5 | Incline Smith Press: 2x8 @ RPE 9 | Accessories: last set failure
+* Lower A: High-Bar Squat: 3x6 @ 75% | Paused High-Bar Squat: 2x4 @ 70% | RDL: 3x8 @ RPE 8 | Accessories: last set failure
+* Upper B: Larsen Press: 3x8 @ 75% | Pull-ups: 3x10 @ RPE 8.5 | Close-Grip Bench: 2x10 @ 72.5% | Accessories: last set failure
+* Lower B: Tempo High-Bar Squat: 3x5 @ 70% | RDL: 3x6 @ RPE 8.5 | Accessories: last set failure
+WEEK 4 (Deload)
+* Upper A: Bench: 2x5 @ 67.5% | Weighted Pull-ups: 3x5 @ RPE 6 | Incline Smith Press: 2x8 @ RPE 6 | Accessories: 1 set, 2 RIR
+* Lower A: High-Bar Squat: 2x6 @ 65% | Paused High-Bar Squat: 2x4 @ 60% | RDL: 2x8 @ RPE 6 | Accessories: 1 set, 2 RIR
+* Upper B: Larsen Press: 2x8 @ 65% | Pull-ups: 3x8 @ RPE 6 | Close-Grip Bench: 2x8 @ 62.5% | Accessories: 1 set, 2 RIR
+* Lower B: Tempo High-Bar Squat: 2x5 @ 60% | RDL: 2x6 @ RPE 6 | Accessories: 1 set, 2 RIR`,
+  },
+  {
+    title: "4-Week Strength Base Template",
+    text: `4-Week Strength Base Template
+Focus: Heavy exposure singles at RPE 7-8 with 70-80% backdowns. If a single feels like RPE 9+, drop backdowns by 5%.
+WEEK 1 (Intro to Heavy) Day 1 - Upper A
+1. Bench Single: 1x1 @ 82.5% (Fast, RPE 7)
+2. Bench Backdown: 3x4 @ 75%
+3. Weighted Pull-ups: 4x5 @ RPE 8
+4. Incline Smith Press: 2x8 @ RPE 8
+5. Chest-Supported Row: 3x8-10 (1 RIR)
+6. Tricep Pushdown: 3x10-12
+Day 2 - Lower A
+1. Squat Single: 1x1 @ 82.5% (Fast, RPE 7)
+2. Squat Backdown: 3x4 @ 72.5%
+3. Paused High-Bar Squat: 2x4 @ 67.5%
+4. Leg Press: 3x10-12
+5. Leg Extension: 2x12-15
+Day 3 - Upper B
+1. Larsen Press: 3x6 @ 75% (1-2 RIR)
+2. Pull-ups: 3x10 @ RPE 8
+3. Close-Grip Bench: 3x8 @ 70%
+4. Lat Pulldown: 3x10-12
+5. Lateral Raise: 3x12-15
+6. Curls: 3x10-12
+Day 4 - Lower B
+1. Deadlift Single: 1x1 @ 82.5% (Smooth, RPE 7)
+2. Deadlift Backdown: 3x4 @ 75%
+3. Paused High-Bar Squat: 3x4 @ 67.5%
+4. Hamstring Curl: 3x10-12
+5. Abs: 3x10-15
+WEEK 2 (Build Momentum)
+* Upper A: Bench Single: 1x1 @ 85% | Bench Backdown: 4x4 @ 77.5% | Weighted Pull-ups: 4x5 @ RPE 8.5 | Incline Smith Press: 2x8 @ RPE 8.5 | Accessories: 1 RIR
+* Lower A: Squat Single: 1x1 @ 85% | Squat Backdown: 4x4 @ 75% | Paused High-Bar Squat: 2x4 @ 70% | Accessories: 1 RIR
+* Upper B: Larsen Press: 3x6 @ 77.5% | Pull-ups: 3x10 @ RPE 8.5 | Close-Grip Bench: 3x8 @ 72.5% | Accessories: 1 RIR
+* Lower B: Deadlift Single: 1x1 @ 85% | Deadlift Backdown: 3x4 @ 77.5% | Paused High-Bar Squat: 3x4 @ 70% | Accessories: 1 RIR
+WEEK 3 (Peak Single Week)
+* Upper A: Bench Single: 1x1 @ 87.5% | Bench Backdown: 3x3 @ 80% | Weighted Pull-ups: 4x4 @ RPE 9 | Incline Smith Press: 2x8 @ RPE 9 | Accessories: 1 RIR
+* Lower A: Squat Single: 1x1 @ 87.5% | Squat Backdown: 3x3 @ 77.5% | Paused High-Bar Squat: 2x3 @ 72.5% | Accessories: 1 RIR
+* Upper B: Larsen Press: 3x5 @ 80% | Pull-ups: 3x8 @ RPE 8.5 | Close-Grip Bench: 3x6 @ 75% | Accessories: 1 RIR
+* Lower B: Deadlift Single: 1x1 @ 87.5% | Deadlift Backdown: 3x3 @ 80% | Paused High-Bar Squat: 2x4 @ 72.5% | Accessories: 1 RIR
+WEEK 4 (Deload)
+* Upper A: Bench: 3x4 @ 70% | Weighted Pull-ups: 3x5 @ RPE 6 | Incline Smith Press: 2x8 @ RPE 6 | Accessories: 2 RIR
+* Lower A: High-Bar Squat: 3x4 @ 67.5% | Leg Press: 2x10 @ RPE 6 | Leg Extension: 2x12 @ RPE 6 | Accessories: 2 RIR
+* Upper B: Larsen Press: 2x6 @ 65% | Pull-ups: 3x8 @ RPE 6 | Close-Grip Bench: 2x6 @ 65% | Accessories: 2 RIR
+* Lower B: Conventional Deadlift: 2x4 @ 70% | Paused High-Bar Squat: 2x4 @ 60% | Accessories: 2 RIR`,
+  },
+  {
+    title: "4-Week Bench Specialization Template",
+    text: `4-Week Bench Specialization Template
+Focus: Peak bench while lower body stays on maintenance. Heavy bench exposure, triceps, lats, and low fatigue legs.
+WEEK 1 (Heavy Primer) Day 1 - Upper A
+1. Bench Single: 1x1 @ 85% (RPE 8)
+2. Bench Backdown: 3x3 @ 77.5%
+3. Weighted Pull-ups: 4x5 @ RPE 8
+4. Incline Smith Press: 2x8 @ RPE 8
+5. Chest-Supported Row: 3x8 (1 RIR)
+6. Tricep Pushdown: 3x10
+Day 2 - Lower A
+1. High-Bar Squat: 3x5 @ 67.5% (RPE 6.5)
+2. Leg Press: 2x10
+3. Leg Extension: 2x12
+4. Calf Raises: 2x15
+Day 3 - Upper B
+1. Pin Press / Slingshot Bench: 3x3 @ 82.5%
+2. Larsen Press: 3x5 @ 77.5%
+3. Pull-ups: 3x10 @ RPE 8
+4. Lat Pulldown: 3x10
+5. Lateral Raise: 3x12
+6. Curls: 3x10
+Day 4 - Lower B
+1. Conventional Deadlift: 3x4 @ 70% (RPE 6.5)
+2. Paused High-Bar Squat: 2x4 @ 60%
+3. Hamstring Curl: 2x10
+4. Abs: 3x15
+WEEK 2 (Peak Intensity)
+* Upper A: Bench Single: 1x1 @ 87.5% | Bench Backdown: 3x2 @ 80% | Weighted Pull-ups: 4x4 @ RPE 8.5 | Incline Smith Press: 2x6 @ RPE 8.5 | Accessories: 1 RIR
+* Lower A: High-Bar Squat: 3x5 @ 70% | Leg Press: 2x10 @ RPE 6 | Leg Extension: 2x12 @ RPE 6 | Accessories: 2 RIR
+* Upper B: Pin Press / Slingshot Bench: 3x2 @ 85% | Larsen Press: 3x4 @ 80% | Pull-ups: 3x10 @ RPE 8.5 | Accessories: 1 RIR
+* Lower B: Conventional Deadlift: 3x3 @ 72.5% | Paused High-Bar Squat: 2x4 @ 62.5% | Accessories: 2 RIR
+WEEK 3 (Taper)
+* Upper A: Bench Single: 1x1 @ 82.5% | Bench Backdown: 2x3 @ 70% | Pull-ups: 3x8 @ RPE 6 | Chest-Supported Row: 2x10 @ RPE 6 | Accessories: light
+* Lower A: High-Bar Squat: 2x4 @ 60% | Leg Press: 2x10 @ RPE 6
+* Upper B: Bench: 3x3 @ 60% | Lat Pulldown: 2x12 @ RPE 6 | Lateral Raise: 2x15 @ RPE 6
+* Lower B: Hamstring Curl: 2x10 @ RPE 6 | Abs: 2x15 @ RPE 6
+WEEK 4 (Test / Reset)
+* Upper A: Bench Single: 1x1 @ 90% | Bench Single: 1x1 @ 95% | Bench Single: 1x1 @ 100% | Chest-Supported Row: 2x10 @ RPE 6
+* Lower A: High-Bar Squat: 2x5 @ 55% | Leg Extension: 2x12 @ RPE 6
+* Upper B: Bench: 3x5 @ 55% | Pull-ups: 3x8 @ RPE 6 | Curls: 2x12 @ RPE 6
+* Lower B: Conventional Deadlift: 2x4 @ 60% | Abs: 2x15 @ RPE 6`,
+  },
+  {
+    title: "4-Week Squat Specialization Template",
+    text: `4-Week Squat Specialization Template
+Focus: Peak squat with frequent heavy exposure, paused work, and low-fatigue upper maintenance.
+WEEK 1 (Heavy Primer) Day 1 - Upper A
+1. Bench Single: 1x1 @ 80% (RPE 7)
+2. Bench Backdown: 3x4 @ 72.5%
+3. Weighted Pull-ups: 3x6 @ RPE 8
+4. Incline Smith Press: 2x8 @ RPE 7
+5. Chest-Supported Row: 2x10
+Day 2 - Lower A
+1. Squat Single: 1x1 @ 85% (RPE 7.5)
+2. Squat Backdown: 4x3 @ 77.5%
+3. Paused High-Bar Squat: 3x3 @ 70%
+4. Leg Press: 2x10
+5. Abs: 3x10-15
+Day 3 - Upper B
+1. Larsen Press: 3x6 @ 70%
+2. Pull-ups: 3x8 @ RPE 7
+3. Close-Grip Bench: 2x8 @ 67.5%
+4. Lat Pulldown: 2x10
+5. Lateral Raise: 2x12
+Day 4 - Lower B
+1. Tempo High-Bar Squat: 4x4 @ 70%
+2. RDL: 3x6 @ RPE 7.5
+3. Hamstring Curl: 3x10
+4. Bulgarian Split Squat: 2x8
+WEEK 2 (Build)
+* Upper A: Bench Single: 1x1 @ 82.5% | Bench Backdown: 3x4 @ 75% | Accessories: 1-2 RIR
+* Lower A: Squat Single: 1x1 @ 87.5% | Squat Backdown: 4x3 @ 80% | Paused High-Bar Squat: 3x2 @ 72.5% | Accessories: 1 RIR
+* Upper B: Larsen Press: 3x6 @ 72.5% | Pull-ups: 3x8 @ RPE 7.5 | Close-Grip Bench: 2x8 @ 70% | Accessories: 1-2 RIR
+* Lower B: Tempo High-Bar Squat: 4x3 @ 72.5% | RDL: 3x5 @ RPE 8 | Accessories: 1 RIR
+WEEK 3 (Peak Single)
+* Upper A: Bench Single: 1x1 @ 82.5% | Bench Backdown: 2x3 @ 72.5% | Accessories: 2 RIR
+* Lower A: Squat Single: 1x1 @ 90% | Squat Backdown: 3x2 @ 82.5% | Paused High-Bar Squat: 2x2 @ 75% | Accessories: 1 RIR
+* Upper B: Larsen Press: 2x5 @ 70% | Pull-ups: 3x8 @ RPE 7 | Accessories: 2 RIR
+* Lower B: Tempo High-Bar Squat: 3x3 @ 75% | RDL: 2x5 @ RPE 7.5 | Accessories: 1-2 RIR
+WEEK 4 (Deload)
+* Upper A: Bench: 3x4 @ 65% | Weighted Pull-ups: 2x6 @ RPE 6 | Accessories: 2 RIR
+* Lower A: High-Bar Squat: 3x3 @ 67.5% | Paused High-Bar Squat: 2x3 @ 60% | Leg Press: 2x10 @ RPE 6
+* Upper B: Larsen Press: 2x6 @ 60% | Lat Pulldown: 2x10 @ RPE 6 | Lateral Raise: 2x12 @ RPE 6
+* Lower B: Tempo High-Bar Squat: 2x4 @ 60% | Hamstring Curl: 2x10 @ RPE 6 | Abs: 2x15 @ RPE 6`,
+  },
+  {
+    title: "4-Week Deadlift Specialization Template",
+    text: `4-Week Deadlift Specialization Template
+Focus: Peak conventional deadlift while bench and squat stay exposed but controlled. No grinding.
+WEEK 1 (Heavy Primer) Day 1 - Upper A
+1. Bench Single: 1x1 @ 80% (RPE 7)
+2. Bench Backdown: 3x4 @ 72.5%
+3. Weighted Pull-ups: 4x5 @ RPE 8
+4. Chest-Supported Row: 3x8
+5. Tricep Pushdown: 2x12
+Day 2 - Lower A
+1. Squat Single: 1x1 @ 80% (RPE 7)
+2. Squat Backdown: 3x4 @ 72.5%
+3. Paused High-Bar Squat: 2x4 @ 65%
+4. Leg Press: 2x10
+5. Abs: 3x10-15
+Day 3 - Upper B
+1. Larsen Press: 3x6 @ 72.5%
+2. Pull-ups: 3x8 @ RPE 8
+3. Close-Grip Bench: 2x8 @ 70%
+4. Lat Pulldown: 3x10
+5. Curls: 2x12
+Day 4 - Lower B
+1. Deadlift Single: 1x1 @ 85% (Smooth, RPE 7.5)
+2. Deadlift Backdown: 4x3 @ 77.5%
+3. RDL: 3x6 @ RPE 7
+4. Hamstring Curl: 3x10
+5. Abs: 3x15
+WEEK 2 (Build)
+* Upper A: Bench Single: 1x1 @ 82.5% | Bench Backdown: 3x3 @ 75% | Weighted Pull-ups: 4x5 @ RPE 8.5 | Accessories: 1 RIR
+* Lower A: Squat Single: 1x1 @ 82.5% | Squat Backdown: 3x3 @ 75% | Paused High-Bar Squat: 2x3 @ 67.5% | Accessories: 2 RIR
+* Upper B: Larsen Press: 3x6 @ 75% | Pull-ups: 3x8 @ RPE 8 | Close-Grip Bench: 2x8 @ 72.5% | Accessories: 1 RIR
+* Lower B: Deadlift Single: 1x1 @ 87.5% | Deadlift Backdown: 4x3 @ 80% | RDL: 3x5 @ RPE 7.5 | Accessories: 1 RIR
+WEEK 3 (Peak Pull)
+* Upper A: Bench Single: 1x1 @ 82.5% | Bench Backdown: 2x3 @ 72.5% | Accessories: 2 RIR
+* Lower A: Squat Single: 1x1 @ 82.5% | Squat Backdown: 2x3 @ 72.5% | Leg Press: 2x8 @ RPE 6 | Accessories: 2 RIR
+* Upper B: Larsen Press: 2x5 @ 70% | Pull-ups: 3x8 @ RPE 7 | Lat Pulldown: 2x10 @ RPE 7
+* Lower B: Deadlift Single: 1x1 @ 90% | Deadlift Backdown: 3x2 @ 82.5% | RDL: 2x5 @ RPE 7 | Hamstring Curl: 2x10
+WEEK 4 (Deload)
+* Upper A: Bench: 3x4 @ 65% | Weighted Pull-ups: 2x6 @ RPE 6 | Accessories: 2 RIR
+* Lower A: High-Bar Squat: 2x4 @ 60% | Leg Press: 2x10 @ RPE 6 | Abs: 2x15
+* Upper B: Larsen Press: 2x6 @ 60% | Lat Pulldown: 2x10 @ RPE 6 | Curls: 2x12 @ RPE 6
+* Lower B: Conventional Deadlift: 3x3 @ 70% | RDL: 2x6 @ RPE 6 | Hamstring Curl: 2x10 @ RPE 6`,
+  },
+];
 
 async function buildExerciseLookup(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data } = await supabase.from("exercises").select("id, name");

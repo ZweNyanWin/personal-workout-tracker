@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getAllPrograms, createProgram, createBlock, createSession, updateSession, deleteSession, deleteBlock, deleteProgram, importProgramTemplate } from "@/lib/actions/admin";
+import { getAllPrograms, createProgram, createBlock, createSession, updateSession, deleteSession, deleteBlock, deleteProgram, importProgramTemplate, createStarterTemplates } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -378,6 +378,7 @@ export default function ProgramsPage() {
   const [deletingBlock, startDeleteBlock] = useTransition();
   const [confirmDeleteProgram, setConfirmDeleteProgram] = useState<string | null>(null);
   const [deletingProgram, startDeleteProgram] = useTransition();
+  const [creatingStarter, startCreateStarter] = useTransition();
 
   function reload() {
     getAllPrograms().then((data) => {
@@ -417,11 +418,35 @@ export default function ProgramsPage() {
     });
   }
 
+  function handleCreateStarterTemplates() {
+    startCreateStarter(async () => {
+      const result = await createStarterTemplates();
+      if (result.success) {
+        const { created, skipped } = result.data;
+        toast.success(
+          created > 0
+            ? `Created ${created} starter template${created === 1 ? "" : "s"}`
+            : "Starter templates already exist"
+        );
+        if (skipped > 0) {
+          toast.message(`${skipped} existing template${skipped === 1 ? "" : "s"} skipped`);
+        }
+        reload();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
   return (
     <div className="flex flex-col">
       <div className="sticky top-0 z-10 flex h-14 items-center justify-between px-4 border-b border-border bg-background/95 backdrop-blur-sm">
         <h1 className="text-base font-semibold">Programs & Templates</h1>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" loading={creatingStarter} onClick={handleCreateStarterTemplates}>
+            <BookOpen className="h-4 w-4" />
+            Starter Templates
+          </Button>
           <ImportTemplateDialog onDone={reload} />
           <Dialog open={newProgramOpen} onOpenChange={setNewProgramOpen}>
             <DialogTrigger asChild>

@@ -156,12 +156,14 @@ export function canonicalExerciseName(name: string) {
   const key = normalizeExerciseKey(name);
   if (/\bbench\b/.test(key) && /\bclose grip\b/.test(key)) return "Close-Grip Bench Press";
   if (/\blarsen\b/.test(key)) return "Larsen Press";
+  if (/\bpin press\b/.test(key) || /\bslingshot\b/.test(key)) return "Pin Press / Slingshot Bench";
   if (/\bbench\b/.test(key) || key === "bench press") return "Competition Bench Press";
   if (/\bpaused\b/.test(key) && /\bhigh bar\b/.test(key)) return "Paused High-Bar Squat";
   if (/\btempo\b/.test(key) && (/\bsquat\b/.test(key) || /\bhigh bar\b/.test(key))) return "Tempo Squat";
   if (/\bhigh bar\b/.test(key) || key === "highbar" || key === "high bar squat") return "High-Bar Squat";
   if (/\bsquat\b/.test(key)) return "High-Bar Squat";
   if (/\brdl\b/.test(key) || /\bromanian deadlift\b/.test(key)) return "Romanian Deadlift";
+  if (/\bconventional deadlift\b/.test(key) || key === "deadlift" || /\bdeadlift\b/.test(key)) return "Conventional Deadlift";
   if (/\bweighted\b/.test(key) && /\bpull/.test(key)) return "Weighted Pull-Up";
   if (/\bpull/.test(key) && /\bup/.test(key)) return "Weighted Pull-Up";
   if (/\bpushdown\b/.test(key)) return "Tricep Pushdown";
@@ -176,6 +178,7 @@ export function canonicalExerciseName(name: string) {
   if (/\bcable fly\b/.test(key) || /\bpec deck\b/.test(key)) return "Cable Fly / Pec Deck";
   if (/\bbulgarian\b/.test(key)) return "Bulgarian Split Squat";
   if (/\bincline\b/.test(key) && /\bsmith\b/.test(key)) return "Incline Smith Press";
+  if (/\bcalf raise/.test(key)) return "Calf Raises";
   return titleCase(name.replace(/\s+/g, " ").trim());
 }
 
