@@ -281,7 +281,7 @@ function AddBlockDialog({ programId, onDone }: { programId: string; onDone: () =
         <div className="space-y-3 mt-2">
           <div className="space-y-1.5">
             <Label>Block Name *</Label>
-            <Input placeholder="e.g. Week 1 – Accumulation" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input placeholder="e.g. Week 1 - Hypertrophy" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Duration (weeks)</Label>

@@ -140,6 +140,7 @@ export type NavItem = {
 export type SessionLabel = "Upper A" | "Lower A" | "Upper B" | "Lower B";
 
 export type BlockLabel =
+  | "Hypertrophy"
   | "Accumulation"
   | "Strength Base"
   | "Intensification"

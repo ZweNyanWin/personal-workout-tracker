@@ -4,12 +4,13 @@ import { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getAllPrograms, createProgram, createBlock, createSession, updateSession, deleteSession, deleteBlock, deleteProgram } from "@/lib/actions/admin";
+import { getAllPrograms, createProgram, createBlock, createSession, updateSession, deleteSession, deleteBlock, deleteProgram, importProgramTemplate } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,7 @@ import {
   FolderPlus,
   CalendarPlus,
   Trash2,
+  ClipboardPaste,
 } from "lucide-react";
 
 // ─── Session row with edit + delete ──────────────────────────
@@ -151,7 +153,7 @@ function AddBlockDialog({
         <div className="space-y-3 mt-2">
           <div className="space-y-1.5">
             <Label>Block Name *</Label>
-            <Input placeholder="e.g. Week 1 – Accumulation" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <Input placeholder="e.g. Week 1 - Hypertrophy" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Duration (weeks)</Label>
@@ -244,6 +246,125 @@ function AddSessionDialog({
   );
 }
 
+function ImportTemplateDialog({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [rawText, setRawText] = useState("");
+  const [addStrengthSingles, setAddStrengthSingles] = useState(false);
+  const [exposurePercent, setExposurePercent] = useState("82.5");
+  const [importing, startImport] = useTransition();
+
+  const placeholder = `Hypertrophy (Weeks 1-4)
+Focus: Hypertrophy, technique, recovering from heavy singles.
+
+WEEK 1 (hypertrophy week - should feel good)
+Day 1 - Upper A
+1. Bench: 3x5 @ 100 kg (leave 1-2 reps in tank)
+2. Weighted Pull-ups: 4x6 @ +35 lb (leave 1-2 reps in tank)
+
+WEEK 2 (small step up)
+* Upper A: Bench: 3x5 @ 102.5 kg | Weighted Pull-ups: 4x6 @ +40 lb | Accessories: last set failure
+
+For strength templates:
+1. Bench single: 1x1 @ 82.5% (strength exposure)
+2. Bench backdown: 4x4 @ 75%`;
+
+  function handleImport() {
+    if (!rawText.trim()) {
+      toast.error("Paste a template first");
+      return;
+    }
+
+    const percent = exposurePercent ? parseFloat(exposurePercent) : 82.5;
+    startImport(async () => {
+      const result = await importProgramTemplate({
+        title: title.trim() || undefined,
+        rawText,
+        addStrengthExposureSingles: addStrengthSingles,
+        strengthExposurePercent: Number.isFinite(percent) ? percent : 82.5,
+      });
+
+      if (result.success) {
+        toast.success("Template imported");
+        setOpen(false);
+        setTitle("");
+        setRawText("");
+        setAddStrengthSingles(false);
+        setExposurePercent("82.5");
+        onDone();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <ClipboardPaste className="h-4 w-4" />
+          Paste Import
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Import Template</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <div className="space-y-1.5">
+            <Label>Template Title</Label>
+            <Input
+              placeholder="Optional - inferred from pasted text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Program Text *</Label>
+            <Textarea
+              placeholder={placeholder}
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              rows={16}
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div className="rounded-lg border border-border p-3 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label>Strength exposure singles</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Adds 1x1 bench/squat placeholders before backdowns.
+                </p>
+              </div>
+              <Switch checked={addStrengthSingles} onCheckedChange={setAddStrengthSingles} />
+            </div>
+            {addStrengthSingles && (
+              <div className="space-y-1.5">
+                <Label>Single percent</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="1"
+                  max="100"
+                  value={exposurePercent}
+                  onChange={(e) => setExposurePercent(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          <Button className="w-full" variant="brand" loading={importing} onClick={handleImport}>
+            Import Template
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────
 
 export default function ProgramsPage() {
@@ -300,25 +421,28 @@ export default function ProgramsPage() {
     <div className="flex flex-col">
       <div className="sticky top-0 z-10 flex h-14 items-center justify-between px-4 border-b border-border bg-background/95 backdrop-blur-sm">
         <h1 className="text-base font-semibold">Programs & Templates</h1>
-        <Dialog open={newProgramOpen} onOpenChange={setNewProgramOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" variant="brand"><Plus className="h-4 w-4" />New Program</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-sm">
-            <DialogHeader><DialogTitle>Create Program</DialogTitle></DialogHeader>
-            <div className="space-y-4 mt-2">
-              <div className="space-y-1.5">
-                <Label>Title *</Label>
-                <Input placeholder="e.g. 16-Week Peak Block" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <ImportTemplateDialog onDone={reload} />
+          <Dialog open={newProgramOpen} onOpenChange={setNewProgramOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" variant="brand"><Plus className="h-4 w-4" />New Program</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-sm">
+              <DialogHeader><DialogTitle>Create Program</DialogTitle></DialogHeader>
+              <div className="space-y-4 mt-2">
+                <div className="space-y-1.5">
+                  <Label>Title *</Label>
+                  <Input placeholder="e.g. 16-Week Peak Block" value={title} onChange={(e) => setTitle(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Description</Label>
+                  <Textarea placeholder="Brief description…" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+                </div>
+                <Button className="w-full" loading={saving} onClick={handleCreate}>Create Program</Button>
               </div>
-              <div className="space-y-1.5">
-                <Label>Description</Label>
-                <Textarea placeholder="Brief description…" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-              </div>
-              <Button className="w-full" loading={saving} onClick={handleCreate}>Create Program</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="flex-1 p-4 md:p-6 max-w-3xl mx-auto w-full space-y-4">
@@ -370,7 +494,7 @@ export default function ProgramsPage() {
                 <div className="p-6 text-center">
                   <Layers className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground mb-3">No blocks yet.</p>
-                  <p className="text-xs text-muted-foreground">Click "Add Block" above to create a training block (e.g. "Week 1", "Accumulation Phase").</p>
+                  <p className="text-xs text-muted-foreground">Click "Add Block" above to create a training week.</p>
                 </div>
               )}
 
