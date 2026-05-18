@@ -21,11 +21,11 @@ export function MarkDoneButton({
       if (isDone) {
         const result = await unmarkSessionDone(sessionId);
         if (!result.success) toast.error(result.error);
-        else toast.success("Unmarked — ready to log fresh");
+        else toast.success("Marked as not done");
       } else {
         const result = await markSessionDone(sessionId);
         if (!result.success) toast.error(result.error);
-        else toast.success("Session marked as done");
+        else toast.success("Session complete");
       }
     });
   }
@@ -35,16 +35,22 @@ export function MarkDoneButton({
       onClick={toggle}
       disabled={pending}
       title={displayDone ? "Unmark as done" : "Mark as done"}
-      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors tap-none disabled:opacity-50 ${
+      className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors tap-none disabled:opacity-50 ${
         displayDone
-          ? "text-success hover:bg-success/10"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+          ? "border-success/40 bg-success/15 text-success hover:bg-success/20"
+          : "border-border bg-secondary/60 text-secondary-foreground hover:border-success/40 hover:bg-success/10 hover:text-success"
       }`}
     >
       {displayDone ? (
-        <CheckCircle2 className="h-5 w-5" />
+        <>
+          <CheckCircle2 className="h-4 w-4" />
+          Done
+        </>
       ) : (
-        <Circle className="h-5 w-5" />
+        <>
+          <Circle className="h-4 w-4" />
+          Mark Done
+        </>
       )}
     </button>
   );

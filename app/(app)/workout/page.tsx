@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MarkDoneButton } from "@/components/workout/mark-done-button";
 import { SESSION_BG_COLORS } from "@/lib/utils";
 import { Eye } from "lucide-react";
 import type { Metadata } from "next";
@@ -44,6 +45,8 @@ export default async function WorkoutPage() {
   }
 
   const totalSessions = sessions.length;
+  const currentIdx = assignment?.current_session_index ?? 0;
+  const currentCycleIdx = totalSessions > 0 ? currentIdx % totalSessions : 0;
   const totalWeeks = new Set(
     sessions
       .map((session) => session.block?.order_index)
@@ -81,11 +84,16 @@ export default async function WorkoutPage() {
               {sessions.map((session, idx) => {
                 const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
                 const week = weekLabel(session);
+                const isDone = idx < currentCycleIdx;
 
                 return (
                   <div
                     key={session.id}
-                    className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/30"
+                    className={`rounded-xl border p-4 transition-colors hover:border-primary/30 ${
+                      isDone
+                        ? "border-success/35 bg-success/8"
+                        : "border-border bg-card"
+                    }`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
@@ -96,6 +104,11 @@ export default async function WorkoutPage() {
                           <Badge className={colorClass} variant="outline">
                             {session.title}
                           </Badge>
+                          {isDone && (
+                            <Badge variant="success" className="text-[10px]">
+                              Done
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
                           {session.exercises?.length ?? 0} exercises
@@ -105,7 +118,8 @@ export default async function WorkoutPage() {
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{session.notes}</p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <MarkDoneButton sessionId={session.id} isDone={isDone} />
                         <Link href={`/workout/${session.id}`}>
                           <Button variant="ghost" size="icon-sm">
                             <Eye className="h-5 w-5" />
