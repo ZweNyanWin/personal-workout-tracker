@@ -32,30 +32,31 @@ export function BodyweightChart({ data }: BodyweightChartProps) {
       <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: -10 }}>
         <defs>
           <linearGradient id="bwGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="hsl(142 70% 45%)" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="hsl(142 70% 45%)" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--pb-success)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="var(--pb-success)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 13% 18%)" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
         <XAxis
           dataKey="date"
           tickFormatter={formatDate}
-          tick={{ fill: "hsl(215 15% 50%)", fontSize: 11 }}
+          tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           minTickGap={30}
         />
         <YAxis
           domain={[min, max]}
-          tick={{ fill: "hsl(215 15% 50%)", fontSize: 11 }}
+          tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           tickFormatter={(v) => `${v}kg`}
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: "hsl(222 13% 10%)",
-            border: "1px solid hsl(222 13% 18%)",
+            backgroundColor: "var(--chart-tooltip)",
+            border: "1px solid var(--chart-grid)",
+            color: "var(--pb-foreground)",
             borderRadius: "8px",
             fontSize: "12px",
           }}
@@ -65,7 +66,7 @@ export function BodyweightChart({ data }: BodyweightChartProps) {
         <Area
           type="monotone"
           dataKey="weight"
-          stroke="hsl(142 70% 45%)"
+          stroke="var(--pb-success)"
           strokeWidth={2}
           fill="url(#bwGradient)"
           dot={false}

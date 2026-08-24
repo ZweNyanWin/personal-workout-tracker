@@ -1,55 +1,127 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --pb-background: hsl(210 24% 98%);
+  --pb-foreground: hsl(222 28% 13%);
+  --pb-card: hsl(0 0% 100%);
+  --pb-card-foreground: hsl(222 28% 13%);
+  --pb-popover: hsl(0 0% 100%);
+  --pb-popover-foreground: hsl(222 28% 13%);
+  --pb-primary: hsl(0 74% 50%);
+  --pb-primary-foreground: hsl(0 0% 100%);
+  --pb-secondary: hsl(214 22% 92%);
+  --pb-secondary-foreground: hsl(220 20% 24%);
+  --pb-muted: hsl(210 24% 95%);
+  --pb-muted-foreground: hsl(217 12% 43%);
+  --pb-accent: hsl(211 28% 93%);
+  --pb-accent-foreground: hsl(222 28% 15%);
+  --pb-destructive: hsl(0 72% 48%);
+  --pb-destructive-foreground: hsl(0 0% 100%);
+  --pb-border: hsl(214 20% 85%);
+  --pb-input: hsl(214 20% 80%);
+  --pb-ring: hsl(0 74% 50%);
+  --pb-brand: hsl(0 74% 50%);
+  --pb-brand-foreground: hsl(0 0% 100%);
+  --pb-success: hsl(151 58% 34%);
+  --pb-success-foreground: hsl(0 0% 100%);
+  --pb-warning: hsl(38 90% 46%);
+  --pb-warning-foreground: hsl(24 35% 12%);
+  --chart-grid: hsl(214 20% 88%);
+  --chart-tick: hsl(217 12% 43%);
+  --chart-tooltip: hsl(0 0% 100%);
+  --chart-1: hsl(0 74% 50%);
+  --chart-2: hsl(211 72% 48%);
+  --chart-3: hsl(280 55% 48%);
+  --brand-shadow: hsl(0 74% 45% / 0.18);
+  color-scheme: light;
+}
+
+.dark {
+  --pb-background: hsl(20 9% 9%);
+  --pb-foreground: hsl(28 20% 94%);
+  --pb-card: hsl(20 8% 13%);
+  --pb-card-foreground: hsl(28 20% 94%);
+  --pb-popover: hsl(20 8% 13%);
+  --pb-popover-foreground: hsl(28 20% 94%);
+  --pb-primary: hsl(0 82% 57%);
+  --pb-primary-foreground: hsl(0 0% 100%);
+  --pb-secondary: hsl(214 16% 20%);
+  --pb-secondary-foreground: hsl(30 14% 86%);
+  --pb-muted: hsl(20 7% 18%);
+  --pb-muted-foreground: hsl(24 9% 64%);
+  --pb-accent: hsl(0 25% 20%);
+  --pb-accent-foreground: hsl(28 20% 94%);
+  --pb-destructive: hsl(0 78% 62%);
+  --pb-destructive-foreground: hsl(0 0% 100%);
+  --pb-border: hsl(20 7% 25%);
+  --pb-input: hsl(20 7% 28%);
+  --pb-ring: hsl(0 82% 57%);
+  --pb-brand: hsl(0 82% 57%);
+  --pb-brand-foreground: hsl(0 0% 100%);
+  --pb-success: hsl(151 54% 43%);
+  --pb-success-foreground: hsl(0 0% 100%);
+  --pb-warning: hsl(38 90% 56%);
+  --pb-warning-foreground: hsl(22 35% 12%);
+  --chart-grid: hsl(20 7% 24%);
+  --chart-tick: hsl(24 9% 64%);
+  --chart-tooltip: hsl(20 8% 13%);
+  --chart-1: hsl(0 82% 61%);
+  --chart-2: hsl(211 82% 64%);
+  --chart-3: hsl(280 68% 68%);
+  --brand-shadow: hsl(0 82% 45% / 0.32);
+  color-scheme: dark;
+}
+
 /* ─── Theme tokens (Tailwind v4 @theme) ────────────────────── */
-@theme {
+@theme inline {
   /* Radius */
-  --radius:    0.75rem;
+  --radius:    0.5rem;
   --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-xl: var(--radius);
+  --radius-2xl: calc(var(--radius) + 2px);
 
-  /* Colors — warm iron, oxblood red, steel, and brass */
-  --color-background:           hsl(18 16% 10%);
-  --color-foreground:           hsl(26 24% 94%);
-
-  --color-card:                 hsl(18 12% 14%);
-  --color-card-foreground:      hsl(26 24% 94%);
-
-  --color-popover:              hsl(18 12% 14%);
-  --color-popover-foreground:   hsl(26 24% 94%);
-
-  --color-primary:              hsl(0 84% 55%);
-  --color-primary-foreground:   hsl(0 0% 100%);
-
-  --color-secondary:            hsl(214 18% 20%);
-  --color-secondary-foreground: hsl(32 18% 84%);
-
-  --color-muted:                hsl(18 12% 18%);
-  --color-muted-foreground:     hsl(22 10% 62%);
-
-  --color-accent:               hsl(0 34% 21%);
-  --color-accent-foreground:    hsl(26 24% 94%);
-
-  --color-destructive:          hsl(0 84% 62%);
-  --color-destructive-foreground: hsl(0 0% 100%);
-
-  --color-border:               hsl(18 12% 25%);
-  --color-input:                hsl(18 12% 24%);
-  --color-ring:                 hsl(0 84% 55%);
-
-  --color-brand:                hsl(0 84% 55%);
-  --color-brand-foreground:     hsl(0 0% 100%);
-
-  --color-success:              hsl(151 54% 42%);
-  --color-success-foreground:   hsl(0 0% 100%);
-
-  --color-warning:              hsl(38 90% 56%);
-  --color-warning-foreground:   hsl(22 35% 12%);
+  /* Semantic colors */
+  --color-background: var(--pb-background);
+  --color-foreground: var(--pb-foreground);
+  --color-card: var(--pb-card);
+  --color-card-foreground: var(--pb-card-foreground);
+  --color-popover: var(--pb-popover);
+  --color-popover-foreground: var(--pb-popover-foreground);
+  --color-primary: var(--pb-primary);
+  --color-primary-foreground: var(--pb-primary-foreground);
+  --color-secondary: var(--pb-secondary);
+  --color-secondary-foreground: var(--pb-secondary-foreground);
+  --color-muted: var(--pb-muted);
+  --color-muted-foreground: var(--pb-muted-foreground);
+  --color-accent: var(--pb-accent);
+  --color-accent-foreground: var(--pb-accent-foreground);
+  --color-destructive: var(--pb-destructive);
+  --color-destructive-foreground: var(--pb-destructive-foreground);
+  --color-border: var(--pb-border);
+  --color-input: var(--pb-input);
+  --color-ring: var(--pb-ring);
+  --color-brand: var(--pb-brand);
+  --color-brand-foreground: var(--pb-brand-foreground);
+  --color-success: var(--pb-success);
+  --color-success-foreground: var(--pb-success-foreground);
+  --color-warning: var(--pb-warning);
+  --color-warning-foreground: var(--pb-warning-foreground);
 
   /* Fonts */
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
 
+  /* Keep compact UI labels readable and consistent. */
+  --tracking-tight: 0;
+  --tracking-wide: 0;
+  --tracking-widest: 0;
+}
+
+@theme {
   /* Custom keyframes for UI animations */
   @keyframes accordion-down {
     from { height: 0; }
@@ -110,12 +182,12 @@
 
 /* ─── Base styles ───────────────────────────────────────────── */
 @layer base {
-  html { color-scheme: dark; }
+  html {
+    background: var(--color-background);
+  }
 
   body {
-    background:
-      linear-gradient(135deg, hsl(18 18% 9%) 0%, hsl(0 32% 12%) 42%, hsl(214 20% 12%) 100%);
-    background-attachment: fixed;
+    background: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "rlig" 1, "calt" 1;
     overflow-y: scroll;
@@ -150,7 +222,7 @@
   }
 
   .brand-glow {
-    box-shadow: 0 10px 30px hsl(0 84% 45% / 0.32), 0 0 0 1px hsl(38 90% 56% / 0.12) inset;
+    box-shadow: 0 10px 30px var(--brand-shadow), 0 0 0 1px hsl(38 90% 56% / 0.12) inset;
   }
 
   .pb-nav {

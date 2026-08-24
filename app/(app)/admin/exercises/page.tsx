@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import {
@@ -44,13 +44,13 @@ function ExerciseForm({
   onSubmit: (v: ExerciseInput) => void;
   saving: boolean;
 }) {
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
+  const { register, handleSubmit, control, setValue, formState: { errors } } =
     useForm<ExerciseInput>({
       resolver: zodResolver(exerciseSchema),
       defaultValues: { muscle_groups: [], is_compound: false, ...defaultValues },
     });
 
-  const selectedMuscles = watch("muscle_groups");
+  const selectedMuscles = useWatch({ control, name: "muscle_groups" });
 
   function toggleMuscle(m: string) {
     const current = selectedMuscles ?? [];
@@ -169,7 +169,7 @@ export default function AdminExercisesPage() {
     startSave(async () => {
       const result = await updateExercise(editTarget.id, {
         ...values,
-        primary_lift: (values.primary_lift as any) || null,
+        primary_lift: values.primary_lift || null,
       });
       if (result.success) {
         toast.success("Exercise updated");
@@ -196,13 +196,13 @@ export default function AdminExercisesPage() {
 
   return (
     <div className="flex flex-col">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-between px-4 border-b border-border bg-background/95 backdrop-blur-sm">
-        <h1 className="text-base font-semibold">Exercise Library</h1>
+      <div className="sticky top-0 z-10 flex h-14 items-center justify-between gap-2 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
+        <h1 className="min-w-0 flex-1 truncate text-base font-semibold">Exercise Library</h1>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm" variant="brand">
               <Plus className="h-4 w-4" />
-              Add Exercise
+              <span className="hidden sm:inline">Add Exercise</span>
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">

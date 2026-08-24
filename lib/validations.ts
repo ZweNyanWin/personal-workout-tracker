@@ -5,16 +5,15 @@ export const loginSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-export const signupSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  full_name: z.string().min(2, "Name must be at least 2 characters").max(60),
-  username: z
-    .string()
-    .min(3, "Username must be at least 3 characters")
-    .max(30)
-    .regex(/^[a-z0-9_]+$/, "Username can only contain lowercase letters, numbers, and underscores"),
-});
+export const updatePasswordSchema = z
+  .object({
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string().min(1, "Confirm your new password"),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 export const profileSchema = z.object({
   full_name: z.string().min(2).max(60),
@@ -68,11 +67,18 @@ export const bodyweightSchema = z.object({
     .number()
     .min(30, "Must be at least 30 kg")
     .max(300, "Must be less than 300 kg"),
-  date: z.string().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date").optional(),
+});
+
+export const workoutSetUpdateSchema = z.object({
+  weight_kg: z.number().finite().min(0).max(2000).nullable().optional(),
+  reps: z.number().int().min(1).max(1000).nullable().optional(),
+  rpe: z.number().finite().min(5).max(10).nullable().optional(),
+  is_completed: z.boolean().optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-export type SignupInput = z.infer<typeof signupSchema>;
+export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
 export type ProfileInput = z.infer<typeof profileSchema>;
 export type LogSetInput = z.infer<typeof logSetSchema>;
 export type ExerciseInput = z.infer<typeof exerciseSchema>;

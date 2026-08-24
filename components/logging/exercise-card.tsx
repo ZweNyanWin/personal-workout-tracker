@@ -5,7 +5,6 @@ import { Plus, ChevronDown, ChevronUp, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { addSet } from "@/lib/actions/workout";
 import { SetRow } from "./set-row";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { WorkoutLogExerciseWithSets, WorkoutLogSet } from "@/types";
 

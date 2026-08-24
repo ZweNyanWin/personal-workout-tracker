@@ -119,7 +119,7 @@ export default async function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {analyticsData.prHistory.slice(-10).reverse().map((pr: any) => (
+                {analyticsData.prHistory.slice(-10).reverse().map((pr) => (
                   <div key={pr.id} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                     <div>
                       <p className="text-sm font-medium">{pr.exercise?.name}</p>

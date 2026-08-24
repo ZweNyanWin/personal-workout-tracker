@@ -64,7 +64,7 @@ export async function getAnalyticsData(userId?: string) {
   // Aggregate volume by week
   const weekMap = new Map<string, number>();
   for (const s of volumeData ?? []) {
-    const logDate = (s as any).workout_log_exercises?.workout_logs?.date;
+    const logDate = s.workout_log_exercises?.workout_logs?.date;
     if (!logDate || !s.weight_kg || !s.reps) continue;
     const d = new Date(logDate + "T00:00:00");
     const weekStart = new Date(d);
@@ -133,12 +133,13 @@ export async function getExerciseHistory(exerciseId: string, userId?: string) {
     .limit(20);
 
   // Build e1RM history from sets
-  return (data ?? []).map((entry: any) => {
+  return (data ?? []).map((entry) => {
     const completedSets = (entry.sets ?? []).filter(
-      (s: any) => s.is_completed && s.weight_kg && s.reps
+      (set): set is typeof set & { weight_kg: number; reps: number } =>
+        set.is_completed && set.weight_kg !== null && set.reps !== null
     );
-    const bestE1RM = completedSets.reduce((best: number, s: any) => {
-      const e = estimateE1RM(s.weight_kg, s.reps);
+    const bestE1RM = completedSets.reduce((best, set) => {
+      const e = estimateE1RM(set.weight_kg, set.reps);
       return e > best ? e : best;
     }, 0);
     return {

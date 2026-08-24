@@ -57,7 +57,7 @@ export default async function HistoryPage() {
               </h3>
               <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
                 {monthLogs.map((log) => {
-                  const sessionTitle = (log as any).session?.title;
+                  const sessionTitle = log.session?.title;
                   const colorClass = SESSION_BG_COLORS[sessionTitle ?? ""] ?? "";
                   return (
                     <div key={log.id} className="flex items-center hover:bg-accent transition-colors">

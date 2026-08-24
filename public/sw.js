@@ -1,8 +1,8 @@
-// PowerBuild Tracker — Service Worker v1
-// Minimal offline shell: caches the app shell for fast load on mobile
+// PowerBuild Tracker service worker
+// Cache only public static assets. Authenticated HTML may contain private data.
 
-const CACHE_NAME = "powerbuild-v3";
-const STATIC_ASSETS = ["/", "/dashboard", "/manifest.json"];
+const CACHE_NAME = "powerbuild-v4";
+const STATIC_ASSETS = ["/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -36,14 +36,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.hostname.includes("supabase")) return;
 
-  // Network first, fall back to cache for navigation requests
-  // Must use redirect:'follow' so 307s from the proxy are transparently followed
+  // Authenticated pages are always network-only to avoid caching user data.
   if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request, { redirect: "follow" }).catch(() =>
-        caches.match("/dashboard") || caches.match("/")
-      )
-    );
     return;
   }
 

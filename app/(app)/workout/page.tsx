@@ -8,6 +8,12 @@ import { MarkDoneButton } from "@/components/workout/mark-done-button";
 import { SESSION_BG_COLORS } from "@/lib/utils";
 import { Eye } from "lucide-react";
 import type { Metadata } from "next";
+import type { Tables } from "@/types/database";
+
+type SessionRow = Tables<"program_sessions"> & {
+  block: Pick<Tables<"program_blocks">, "title" | "order_index"> | null;
+  exercises: Pick<Tables<"session_exercises">, "id">[] | null;
+};
 
 export const metadata: Metadata = { title: "Workout" };
 export const dynamic = "force-dynamic";
@@ -32,16 +38,32 @@ export default async function WorkoutPage() {
     .eq("is_active", true)
     .maybeSingle();
 
-  let sessions: any[] = [];
+  let sessions: SessionRow[] = [];
+  let latestCompletion: {
+    session_id: string | null;
+    duration_minutes: number | null;
+  } | null = null;
 
   if (assignment) {
-    const { data } = await supabase
-      .from("program_sessions")
-      .select("*, block:program_blocks(title, order_index), exercises:session_exercises(id)")
-      .eq("program_id", assignment.program_id)
-      .order("session_order", { ascending: true });
+    const [sessionsResult, completionResult] = await Promise.all([
+      supabase
+        .from("program_sessions")
+        .select("*, block:program_blocks(title, order_index), exercises:session_exercises(id)")
+        .eq("program_id", assignment.program_id)
+        .order("session_order", { ascending: true }),
+      supabase
+        .from("workout_logs")
+        .select("session_id, duration_minutes")
+        .eq("user_id", user.id)
+        .eq("assignment_id", assignment.id)
+        .eq("status", "completed")
+        .order("finished_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
-    sessions = data ?? [];
+    sessions = (sessionsResult.data ?? []) as SessionRow[];
+    latestCompletion = completionResult.data;
   }
 
   const totalSessions = sessions.length;
@@ -53,7 +75,7 @@ export default async function WorkoutPage() {
       .filter((weekIndex) => weekIndex != null)
   ).size;
 
-  function weekLabel(session: any) {
+  function weekLabel(session: SessionRow) {
     if (!session.block) return "Week";
     const weekNumber = session.block.order_index != null ? session.block.order_index + 1 : null;
     return weekNumber ? `Week ${weekNumber}` : session.block.title;
@@ -73,7 +95,7 @@ export default async function WorkoutPage() {
           <>
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold">{(assignment as any).program?.title}</h2>
+                <h2 className="text-lg font-bold">{assignment.program?.title}</h2>
                 <p className="text-sm text-muted-foreground">
                   {totalSessions} sessions{totalWeeks ? ` across ${totalWeeks} weeks` : ""}
                 </p>
@@ -84,7 +106,14 @@ export default async function WorkoutPage() {
               {sessions.map((session, idx) => {
                 const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
                 const week = weekLabel(session);
-                const isDone = idx < currentCycleIdx;
+                const previousIdx = totalSessions > 0
+                  ? (currentCycleIdx - 1 + totalSessions) % totalSessions
+                  : -1;
+                const isMostRecent =
+                  idx === previousIdx && latestCompletion?.session_id === session.id;
+                const isDone = idx < currentCycleIdx || isMostRecent;
+                const canMarkDone = idx === currentCycleIdx;
+                const canUndo = isMostRecent && latestCompletion?.duration_minutes === 0;
 
                 return (
                   <div
@@ -119,12 +148,18 @@ export default async function WorkoutPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <MarkDoneButton sessionId={session.id} isDone={isDone} />
-                        <Link href={`/workout/${session.id}`}>
-                          <Button variant="ghost" size="icon-sm">
+                        {(canMarkDone || canUndo) && (
+                          <MarkDoneButton sessionId={session.id} isDone={isDone} />
+                        )}
+                        <Button asChild variant="ghost" size="icon-sm">
+                          <Link
+                            href={`/workout/${session.id}`}
+                            aria-label={`View ${session.title}`}
+                            title="View session"
+                          >
                             <Eye className="h-5 w-5" />
-                          </Button>
-                        </Link>
+                          </Link>
+                        </Button>
                       </div>
                     </div>
                   </div>

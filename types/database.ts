@@ -344,6 +344,7 @@ export type Database = {
           duration_minutes: number | null;
           status: "in_progress" | "completed" | "skipped";
           bodyweight_kg: number | null;
+          energy_rating: number | null;
           notes: string | null;
           created_at: string;
           updated_at: string;
@@ -360,6 +361,7 @@ export type Database = {
           duration_minutes?: number | null;
           status?: "in_progress" | "completed" | "skipped";
           bodyweight_kg?: number | null;
+          energy_rating?: number | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;

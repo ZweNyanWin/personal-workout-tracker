@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
+import { AppToaster } from "@/components/theme/app-toaster";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,7 +33,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f97316",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f8fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#191614" },
+  ],
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -44,10 +48,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full dark`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full`}
       suppressHydrationWarning
     >
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const storedTheme = localStorage.getItem('powerbuild-theme');
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const theme = storedTheme === 'light' || storedTheme === 'dark'
+                  ? storedTheme
+                  : (prefersDark ? 'dark' : 'light');
+                document.documentElement.classList.toggle('dark', theme === 'dark');
+                document.documentElement.style.colorScheme = theme;
+              } catch (_) {}
+            `,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -61,18 +80,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full bg-background text-foreground antialiased">
-        {children}
-        <Toaster
-          theme="dark"
-          position="top-center"
-          toastOptions={{
-            classNames: {
-              toast: "bg-card border-border text-foreground",
-              error: "bg-destructive/20 border-destructive/30 text-foreground",
-              success: "bg-success/20 border-success/30 text-foreground",
-            },
-          }}
-        />
+        <ThemeProvider>
+          {children}
+          <AppToaster />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -28,7 +28,7 @@ export default async function AdminPage() {
     { label: "Total Members", value: members.length, icon: Users },
     {
       label: "Active Plans",
-      value: members.filter((m: any) => m.active_assignment).length,
+      value: members.filter((member) => member.active_assignment).length,
       icon: BookOpen,
     },
   ];
@@ -84,7 +84,7 @@ export default async function AdminPage() {
             Members Overview
           </h3>
           <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-            {members.map((m: any) => (
+            {members.map((m) => (
               <Link
                 key={m.id}
                 href={`/admin/members/${m.id}`}

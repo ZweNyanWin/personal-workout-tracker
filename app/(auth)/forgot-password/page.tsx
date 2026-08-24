@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MailCheck } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -15,12 +16,13 @@ export default function ForgotPasswordPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) return;
     setLoading(true);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
     });
 
     if (error) {
@@ -34,7 +36,9 @@ export default function ForgotPasswordPage() {
   if (sent) {
     return (
       <div className="text-center space-y-4">
-        <div className="text-4xl">📬</div>
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-success/10 text-success">
+          <MailCheck className="h-6 w-6" />
+        </div>
         <h2 className="text-xl font-bold">Check your email</h2>
         <p className="text-sm text-muted-foreground">
           We sent a password reset link to <strong>{email}</strong>
@@ -64,6 +68,8 @@ export default function ForgotPasswordPage() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
             autoFocus
           />
         </div>

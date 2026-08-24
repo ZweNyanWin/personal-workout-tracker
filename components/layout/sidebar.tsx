@@ -15,6 +15,7 @@ import {
   Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import type { Profile } from "@/types";
 
 const MEMBER_NAV = [
@@ -61,9 +62,9 @@ export function Sidebar({ profile }: SidebarProps) {
   }
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-border bg-card/92 shadow-2xl shadow-black/20">
+    <aside className="flex h-full w-60 flex-col border-r border-border bg-card/95 shadow-xl shadow-black/5 dark:shadow-black/20">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 px-4 border-b border-border bg-gradient-to-r from-primary/18 via-card to-secondary/45">
+      <div className="flex h-16 items-center gap-3 px-4 border-b border-border">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
           <Dumbbell className="h-5 w-5 text-primary-foreground" />
         </div>
@@ -91,6 +92,16 @@ export function Sidebar({ profile }: SidebarProps) {
           </>
         )}
       </nav>
+
+      <div className="flex items-center justify-between border-t border-border p-3">
+        <Link
+          href="/profile"
+          className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <span className="block truncate">Account settings</span>
+        </Link>
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }

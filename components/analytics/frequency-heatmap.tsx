@@ -17,10 +17,6 @@ function getLast12Weeks(): string[] {
   return weeks;
 }
 
-function getWeekDayLabel(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
-}
-
 export function FrequencyHeatmap({ data }: FrequencyHeatmapProps) {
   const countMap = new Map(data.map((d) => [d.date, d.count]));
   const days = getLast12Weeks();

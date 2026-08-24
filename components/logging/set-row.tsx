@@ -26,42 +26,66 @@ export function SetRow({ set, planned, previousBest, onUpdate, onDelete }: SetRo
   function handleComplete() {
     const weightVal = parseFloatOrNull(weight);
     const repsVal = parseIntOrNull(reps);
-    if (!weightVal || !repsVal) {
+    const rpeVal = parseFloatOrNull(rpe);
+    if (weightVal === null || weightVal < 0 || repsVal === null || repsVal <= 0) {
       toast.error("Enter weight and reps before marking complete");
+      return;
+    }
+    if (rpeVal !== null && (rpeVal < 5 || rpeVal > 10)) {
+      toast.error("RPE must be between 5 and 10");
       return;
     }
 
     startComplete(async () => {
       const newCompleted = !set.is_completed;
-      await updateSet(set.id, {
+      const result = await updateSet(set.id, {
         weight_kg: weightVal,
         reps: repsVal,
-        rpe: parseFloatOrNull(rpe),
+        rpe: rpeVal,
         is_completed: newCompleted,
       });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
       onUpdate(set.id, {
         weight_kg: weightVal,
         reps: repsVal,
-        rpe: parseFloatOrNull(rpe),
+        rpe: rpeVal,
         is_completed: newCompleted,
       });
     });
   }
 
-  function handleBlurSave() {
+  async function handleBlurSave() {
     const weightVal = parseFloatOrNull(weight);
     const repsVal = parseIntOrNull(reps);
-    if (!weightVal && !repsVal) return;
-    updateSet(set.id, {
+    const rpeVal = parseFloatOrNull(rpe);
+    if (weightVal === null && repsVal === null && rpeVal === null) return;
+    if (
+      (weightVal !== null && weightVal < 0) ||
+      (repsVal !== null && repsVal <= 0) ||
+      (rpeVal !== null && (rpeVal < 5 || rpeVal > 10))
+    ) {
+      toast.error("Check the set values before saving");
+      return;
+    }
+    const result = await updateSet(set.id, {
       weight_kg: weightVal,
       reps: repsVal,
-      rpe: parseFloatOrNull(rpe),
+      rpe: rpeVal,
     });
+    if (!result.success) toast.error(result.error);
   }
 
   function handleDelete() {
     startDelete(async () => {
-      await deleteSet(set.id);
+      const result = await deleteSet(set.id);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
       onDelete(set.id);
     });
   }
@@ -96,6 +120,9 @@ export function SetRow({ set, planned, previousBest, onUpdate, onDelete }: SetRo
         onChange={(e) => setWeight(e.target.value)}
         onBlur={handleBlurSave}
         placeholder={planned?.target_weight_kg ? formatWeight(planned.target_weight_kg) : "kg"}
+        min="0"
+        step="0.5"
+        aria-label={`Weight for set ${set.set_number}`}
         className={cn(
           "flex-1 h-10 rounded-lg border bg-background px-2 text-center text-sm font-bold font-num",
           "focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground/50",
@@ -111,6 +138,8 @@ export function SetRow({ set, planned, previousBest, onUpdate, onDelete }: SetRo
         onChange={(e) => setReps(e.target.value)}
         onBlur={handleBlurSave}
         placeholder={planned?.target_reps ?? "reps"}
+        min="1"
+        aria-label={`Repetitions for set ${set.set_number}`}
         className={cn(
           "w-16 h-10 rounded-lg border bg-background px-2 text-center text-sm font-bold font-num",
           "focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground/50",
@@ -129,6 +158,7 @@ export function SetRow({ set, planned, previousBest, onUpdate, onDelete }: SetRo
         min="5"
         max="10"
         step="0.5"
+        aria-label={`RPE for set ${set.set_number}`}
         className={cn(
           "w-14 h-10 rounded-lg border bg-background px-2 text-center text-xs font-num",
           "focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground/50",
@@ -140,6 +170,8 @@ export function SetRow({ set, planned, previousBest, onUpdate, onDelete }: SetRo
       <button
         onClick={handleComplete}
         disabled={completing}
+        aria-label={set.is_completed ? `Reopen set ${set.set_number}` : `Complete set ${set.set_number}`}
+        title={set.is_completed ? "Reopen set" : "Complete set"}
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors tap-none",
           set.is_completed
@@ -154,6 +186,8 @@ export function SetRow({ set, planned, previousBest, onUpdate, onDelete }: SetRo
       <button
         onClick={handleDelete}
         disabled={deleting}
+        aria-label={`Delete set ${set.set_number}`}
+        title="Delete set"
         className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive transition-colors tap-none"
       >
         <Trash2 className="h-3.5 w-3.5" />

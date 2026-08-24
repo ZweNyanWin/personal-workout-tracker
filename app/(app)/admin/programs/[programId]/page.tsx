@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -8,7 +8,6 @@ import { getProgramDetail, createBlock, createSession, deleteSession, updateSess
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -27,25 +26,35 @@ import {
   Trash2,
 } from "lucide-react";
 
+type ProgramDetail = NonNullable<Awaited<ReturnType<typeof getProgramDetail>>>;
+type ProgramBlock = NonNullable<ProgramDetail["blocks"]>[number];
+type ProgramSession = NonNullable<ProgramBlock["sessions"]>[number];
+
 export default function ProgramDetailPage() {
   const { programId } = useParams<{ programId: string }>();
   const router = useRouter();
-  const [program, setProgram] = useState<any>(null);
+  const [program, setProgram] = useState<ProgramDetail | null>(null);
+  const [loading, setLoading] = useState(true);
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
   const [confirmDeleteBlock, setConfirmDeleteBlock] = useState<string | null>(null);
   const [deletingBlock, startDeleteBlock] = useTransition();
 
-  function reload() {
-    getProgramDetail(programId).then((data) => {
-      if (!data) return;
+  const reload = useCallback(async () => {
+    try {
+      const data = await getProgramDetail(programId);
       setProgram(data);
       const all = new Set<string>();
-      data.blocks?.forEach((b: any) => all.add(b.id));
+      data?.blocks?.forEach((block) => all.add(block.id));
       setExpandedBlocks(all);
-    });
-  }
+    } catch {
+      setProgram(null);
+      toast.error("Could not load this program");
+    } finally {
+      setLoading(false);
+    }
+  }, [programId]);
 
-  useEffect(() => { reload(); }, [programId]);
+  useEffect(() => { void reload(); }, [reload]);
 
   function toggleBlock(blockId: string) {
     setExpandedBlocks((prev) => {
@@ -56,7 +65,7 @@ export default function ProgramDetailPage() {
     });
   }
 
-  if (!program) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground text-sm animate-pulse">Loading program…</p>
@@ -64,13 +73,29 @@ export default function ProgramDetailPage() {
     );
   }
 
-  const totalSessions = program.blocks?.reduce((n: number, b: any) => n + (b.sessions?.length ?? 0), 0) ?? 0;
+  if (!program) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="text-sm text-muted-foreground">This program is unavailable or was deleted.</p>
+        <Button asChild variant="outline">
+          <Link href="/admin/programs">Back to Programs</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const totalSessions = program.blocks?.reduce(
+    (count, block) => count + (block.sessions?.length ?? 0),
+    0
+  ) ?? 0;
 
   return (
     <div className="flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 flex h-14 items-center gap-3 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
         <button
+          type="button"
+          aria-label="Go back"
           onClick={() => router.back()}
           className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors tap-none"
         >
@@ -96,11 +121,11 @@ export default function ProgramDetailPage() {
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <Layers className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground text-sm">No blocks yet.</p>
-            <p className="text-xs text-muted-foreground mt-1">Click "Add Block" to create a training week/phase.</p>
+            <p className="text-xs text-muted-foreground mt-1">Use Add Block to create a training week or phase.</p>
           </div>
         )}
 
-        {program.blocks?.map((block: any) => {
+        {program.blocks?.map((block) => {
           const isExpanded = expandedBlocks.has(block.id);
           return (
             <div key={block.id} className="rounded-xl border border-border bg-card overflow-hidden">
@@ -150,10 +175,10 @@ export default function ProgramDetailPage() {
                 <div className="divide-y divide-border">
                   {(!block.sessions || block.sessions.length === 0) && (
                     <div className="px-6 py-4 text-center">
-                      <p className="text-xs text-muted-foreground">No sessions yet — click "Add Session".</p>
+                      <p className="text-xs text-muted-foreground">Use Add Session to add the first workout.</p>
                     </div>
                   )}
-                  {block.sessions?.map((s: any) => (
+                  {block.sessions?.map((s) => (
                     <SessionRow key={s.id} session={s} onDeleted={reload} />
                   ))}
                 </div>
@@ -167,7 +192,7 @@ export default function ProgramDetailPage() {
 }
 
 // ─── Session Row ──────────────────────────────────────────────
-function SessionRow({ session: s, onDeleted }: { session: any; onDeleted: () => void }) {
+function SessionRow({ session: s, onDeleted }: { session: ProgramSession; onDeleted: () => void }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(s.title);
   const [editNotes, setEditNotes] = useState(s.notes ?? "");
@@ -203,12 +228,12 @@ function SessionRow({ session: s, onDeleted }: { session: any; onDeleted: () => 
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <Link href={`/workout/${s.id}`}>
-            <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
+          <Button asChild size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
+            <Link href={`/workout/${s.id}`}>
               <Pencil className="h-3 w-3" />
               {s.exercises?.length ? "Edit" : "Add Exercises"}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
             onClick={() => { setEditTitle(s.title); setEditNotes(s.notes ?? ""); setEditOpen(true); }}>
             <Pencil className="h-3.5 w-3.5" />
@@ -273,7 +298,7 @@ function AddBlockDialog({ programId, onDone }: { programId: string; onDone: () =
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="gap-1.5">
           <FolderPlus className="h-3.5 w-3.5" />
-          Add Block
+          <span className="hidden sm:inline">Add Block</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">
@@ -322,7 +347,7 @@ function AddSessionDialog({ programId, blockId, onDone }: { programId: string; b
       <DialogTrigger asChild>
         <Button size="sm" variant="ghost" className="gap-1.5 h-7 text-xs text-muted-foreground hover:text-foreground">
           <CalendarPlus className="h-3.5 w-3.5" />
-          Add Session
+          <span className="hidden sm:inline">Add Session</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">

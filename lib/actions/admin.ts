@@ -103,7 +103,11 @@ export async function updateMemberRole(
   memberId: string,
   role: "admin" | "member"
 ): Promise<ActionResult> {
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
+
+  if (memberId === user.id && role !== "admin") {
+    return { success: false, error: "You cannot remove your own admin access" };
+  }
 
   const { error } = await supabase
     .from("profiles")
@@ -112,6 +116,7 @@ export async function updateMemberRole(
 
   if (error) return { success: false, error: error.message };
   revalidatePath("/admin/members");
+  revalidatePath(`/admin/members/${memberId}`);
   return { success: true, data: undefined };
 }
 
@@ -508,7 +513,7 @@ export async function createExercise(
     movement_type: string;
     equipment: string;
     is_compound: boolean;
-    primary_lift?: string;
+    primary_lift?: "bench" | "squat" | "deadlift" | "";
   }
 ): Promise<ActionResult<string>> {
   const supabase = await createClient();
@@ -520,7 +525,7 @@ export async function createExercise(
     .insert({
       ...payload,
       created_by: user.id,
-      primary_lift: payload.primary_lift as any || null,
+      primary_lift: payload.primary_lift || null,
     })
     .select("id")
     .single();
@@ -662,7 +667,7 @@ export async function getSessionWithExercises(sessionId: string) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [sessionResult, profileResult] = await Promise.all([
+  const [sessionResult, profileResult, assignmentResult] = await Promise.all([
     supabase
     .from("program_sessions")
     .select("*, block:program_blocks(title, order_index)")
@@ -671,22 +676,45 @@ export async function getSessionWithExercises(sessionId: string) {
     user
       ? supabase.from("profiles").select("role").eq("id", user.id).single()
       : Promise.resolve({ data: null }),
+    user
+      ? supabase
+          .from("user_program_assignments")
+          .select("program_id, current_session_index")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const session = sessionResult.data;
 
   if (!session) return null;
 
-  const { data: exercises } = await supabase
-    .from("session_exercises")
-    .select("*, exercise:exercises(*)")
-    .eq("session_id", sessionId)
-    .order("order_index", { ascending: true });
+  const [exercisesResult, programSessionsResult] = await Promise.all([
+    supabase
+      .from("session_exercises")
+      .select("*, exercise:exercises(*)")
+      .eq("session_id", sessionId)
+      .order("order_index", { ascending: true }),
+    assignmentResult.data?.program_id === session.program_id
+      ? supabase
+          .from("program_sessions")
+          .select("id")
+          .eq("program_id", session.program_id)
+          .order("session_order", { ascending: true })
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const activeSessions = programSessionsResult.data;
+  const currentSession = activeSessions?.length && assignmentResult.data
+    ? activeSessions[assignmentResult.data.current_session_index % activeSessions.length]
+    : null;
 
   return {
     ...session,
-    exercises: exercises ?? [],
+    exercises: exercisesResult.data ?? [],
     viewer_role: profileResult.data?.role ?? "member",
+    can_start: currentSession?.id === sessionId,
   };
 }
 

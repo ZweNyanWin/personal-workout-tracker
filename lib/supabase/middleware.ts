@@ -33,22 +33,35 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Public routes that don't need auth
-  const publicRoutes = ["/login", "/signup", "/forgot-password"];
-  const isPublicRoute = publicRoutes.some((r) => pathname.startsWith(r));
+  // Recovery routes must remain reachable while Supabase establishes a session.
+  const publicRoutes = [
+    "/login",
+    "/signup",
+    "/forgot-password",
+    "/update-password",
+    "/auth/callback",
+  ];
+  const guestOnlyRoutes = ["/login", "/signup", "/forgot-password"];
+  const matchesRoute = (route: string) =>
+    pathname === route || pathname.startsWith(`${route}/`);
+  const isPublicRoute = publicRoutes.some(matchesRoute);
+  const isGuestOnlyRoute = guestOnlyRoutes.some(matchesRoute);
 
   // Redirect unauthenticated users to login
   if (!user && !isPublicRoute) {
+    const returnTo = `${pathname}${request.nextUrl.search}`;
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    url.search = "";
+    url.searchParams.set("next", returnTo);
     return NextResponse.redirect(url);
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && isPublicRoute) {
+  if (user && isGuestOnlyRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

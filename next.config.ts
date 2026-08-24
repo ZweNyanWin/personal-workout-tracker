@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   generateBuildId: async () => null,
+  turbopack: {
+    root: process.cwd(),
+  },
   experimental: {
     turbopackFileSystemCacheForDev: false,
   },

@@ -10,6 +10,7 @@ import {
   removeSessionExercise,
   updateSessionExercise,
 } from "@/lib/actions/admin";
+import { startWorkout } from "@/lib/actions/workout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -27,6 +30,7 @@ import {
   Trash2,
   Dumbbell,
   Pencil,
+  Play,
 } from "lucide-react";
 import type { Exercise } from "@/types";
 
@@ -50,6 +54,7 @@ type SessionData = {
   block: { title: string; order_index: number } | null;
   exercises: SessionExerciseRow[];
   viewer_role?: string;
+  can_start?: boolean;
 };
 
 export default function SessionDetailPage() {
@@ -57,13 +62,16 @@ export default function SessionDetailPage() {
   const router = useRouter();
 
   const [session, setSession] = useState<SessionData | null>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SessionExerciseRow | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<SessionExerciseRow | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [saving, startSave] = useTransition();
   const [updating, startUpdate] = useTransition();
   const [removing, startRemove] = useTransition();
+  const [starting, startLogging] = useTransition();
 
   // Add form state
   const [selectedExId, setSelectedExId] = useState("");
@@ -88,14 +96,16 @@ export default function SessionDetailPage() {
 
   useEffect(() => {
     if (!sessionId) return;
-    getSessionWithExercises(sessionId).then((data) => {
-      if (data) {
+    getSessionWithExercises(sessionId)
+      .then((data) => {
+        if (!data) return;
         setSession(data as SessionData);
         const viewerIsAdmin = (data as SessionData).viewer_role === "admin";
         setIsAdmin(viewerIsAdmin);
         if (viewerIsAdmin) getAllExercises(true).then(setAllExercises);
-      }
-    });
+      })
+      .catch(() => toast.error("Could not load this session"))
+      .finally(() => setLoadingSession(false));
   }, [sessionId]);
 
   const filteredExercises = allExercises.filter((ex) =>
@@ -147,11 +157,13 @@ export default function SessionDetailPage() {
     });
   }
 
-  function handleRemove(seId: string, name: string) {
+  function handleRemove() {
+    if (!removeTarget) return;
     startRemove(async () => {
-      const result = await removeSessionExercise(seId);
+      const result = await removeSessionExercise(removeTarget.id);
       if (result.success) {
-        toast.success(`Removed ${name}`);
+        toast.success(`Removed ${removeTarget.exercise.name}`);
+        setRemoveTarget(null);
         const updated = await getSessionWithExercises(sessionId);
         if (updated) setSession(updated as SessionData);
       } else {
@@ -199,10 +211,37 @@ export default function SessionDetailPage() {
     });
   }
 
-  if (!session) {
+  function handleStartWorkout() {
+    startLogging(async () => {
+      const result = await startWorkout(sessionId);
+      if (result.success) {
+        router.push(`/log/${result.data}`);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  if (loadingSession) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-muted-foreground text-sm animate-pulse">Loading session…</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+        <div>
+          <h1 className="font-semibold">Session unavailable</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            It may have been removed or is no longer accessible.
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={() => router.replace("/workout")}>
+          Back to program
+        </Button>
       </div>
     );
   }
@@ -214,6 +253,8 @@ export default function SessionDetailPage() {
         <button
           onClick={() => router.back()}
           className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors tap-none"
+          aria-label="Go back"
+          title="Back"
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
@@ -230,7 +271,7 @@ export default function SessionDetailPage() {
             <DialogTrigger asChild>
               <Button size="sm" variant="brand">
                 <Plus className="h-4 w-4" />
-                Add Exercise
+                <span className="hidden sm:inline">Add Exercise</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
@@ -445,6 +486,42 @@ export default function SessionDetailPage() {
       </Dialog>
       )}
 
+      <Dialog
+        open={!!removeTarget}
+        onOpenChange={(open) => {
+          if (!open && !removing) setRemoveTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove exercise?</DialogTitle>
+            <DialogDescription>
+              {removeTarget?.exercise.name} will be removed from this program session.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-row gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={removing}
+              onClick={() => setRemoveTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="flex-1"
+              loading={removing}
+              onClick={handleRemove}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Session notes */}
       {session.notes && (
         <div className="px-4 py-3 bg-accent/30 border-b border-border">
@@ -454,6 +531,20 @@ export default function SessionDetailPage() {
 
       {/* Exercise list */}
       <div className="p-4 md:p-6 max-w-2xl mx-auto w-full space-y-3">
+        {session.can_start && session.exercises.length > 0 && (
+          <Button
+            type="button"
+            variant="brand"
+            size="lg"
+            className="w-full"
+            loading={starting}
+            onClick={handleStartWorkout}
+          >
+            <Play className="h-4 w-4" />
+            Start or resume workout
+          </Button>
+        )}
+
         {/* kg / lb toggle */}
         {session.exercises.length > 0 && (
           <div className="flex justify-end">
@@ -482,7 +573,7 @@ export default function SessionDetailPage() {
             <p className="text-muted-foreground">No exercises in this session.</p>
             {isAdmin ? (
               <p className="text-sm text-muted-foreground mt-1">
-                Tap "Add Exercise" to build this session.
+                Tap &quot;Add Exercise&quot; to build this session.
               </p>
             ) : (
               <p className="text-sm text-muted-foreground mt-1">
@@ -521,13 +612,17 @@ export default function SessionDetailPage() {
                       <button
                         onClick={() => openEdit(se)}
                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors tap-none"
+                        aria-label={`Edit ${se.exercise.name}`}
+                        title="Edit exercise"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
-                        onClick={() => handleRemove(se.id, se.exercise.name)}
+                        onClick={() => setRemoveTarget(se)}
                         disabled={removing}
                         className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors tap-none"
+                        aria-label={`Remove ${se.exercise.name}`}
+                        title="Remove exercise"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

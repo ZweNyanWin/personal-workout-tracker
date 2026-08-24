@@ -18,14 +18,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!profile) redirect("/login");
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh bg-background">
       {/* Desktop sidebar — hidden on mobile */}
       <div className="hidden md:flex md:shrink-0">
         <Sidebar profile={profile} />
       </div>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-background/72">
+      <div className="flex flex-1 flex-col overflow-hidden bg-background">
         {/* Scrollable content area */}
         <main className="flex-1 overflow-y-auto pb-nav md:pb-0">
           {children}

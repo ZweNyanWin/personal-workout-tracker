@@ -22,9 +22,9 @@ function calcPlates(targetKg: number, barKg: number): { plate: number; count: nu
 }
 
 const BAR_OPTIONS = [
-  { label: "20 kg (Olympic)", value: 20 },
-  { label: "15 kg (Women's)", value: 15 },
-  { label: "10 kg (Light)", value: 10 },
+  { label: "Olympic", value: 20 },
+  { label: "Women's", value: 15 },
+  { label: "Light", value: 10 },
 ];
 
 export default function PlateCalculatorPage() {
@@ -37,7 +37,7 @@ export default function PlateCalculatorPage() {
   const achievable = valid
     ? barKg + plates.reduce((s, { plate, count }) => s + plate * count * 2, 0)
     : null;
-  const isExact = achievable === targetNum;
+  const isExact = achievable !== null && Math.abs(achievable - targetNum) < 0.001;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -71,13 +71,15 @@ export default function PlateCalculatorPage() {
                   key={opt.value}
                   type="button"
                   onClick={() => setBarKg(opt.value)}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors tap-none ${
+                  aria-pressed={barKg === opt.value}
+                  className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-sm transition-colors tap-none ${
                     barKg === opt.value
                       ? "border-primary/60 bg-primary/10 text-primary font-medium"
                       : "border-border text-muted-foreground hover:border-primary/30"
                   }`}
                 >
-                  {opt.label}
+                  <span className="font-medium">{opt.value} kg</span>
+                  <span className="hidden text-[10px] text-muted-foreground sm:inline">{opt.label}</span>
                 </button>
               ))}
             </div>

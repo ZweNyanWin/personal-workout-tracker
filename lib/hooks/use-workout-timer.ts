@@ -31,12 +31,14 @@ export function useWorkoutTimer(startedAt: string | null) {
 
 export function useRestTimer() {
   const [seconds, setSeconds] = useState(0);
+  const [totalSeconds, setTotalSeconds] = useState(0);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const start = useCallback((duration: number) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setSeconds(duration);
+    setTotalSeconds(duration);
     setRunning(true);
 
     intervalRef.current = setInterval(() => {
@@ -57,11 +59,12 @@ export function useRestTimer() {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setRunning(false);
     setSeconds(0);
+    setTotalSeconds(0);
   }, []);
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
   const formatted = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
 
-  return { seconds, running, formatted, start, stop };
+  return { seconds, totalSeconds, running, formatted, start, stop };
 }

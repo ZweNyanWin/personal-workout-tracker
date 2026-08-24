@@ -95,7 +95,7 @@ export default async function DashboardPage() {
             </div>
             {data.recentPRs && data.recentPRs.length > 0 ? (
               <div className="space-y-1">
-                {data.recentPRs.slice(0, 2).map((pr: any) => (
+                {data.recentPRs.slice(0, 2).map((pr) => (
                   <div key={pr.id} className="flex items-baseline justify-between">
                     <span className="text-xs text-muted-foreground truncate">
                       {pr.exercise?.name?.split(" ")[0]}

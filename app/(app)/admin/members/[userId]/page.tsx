@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getMemberDetail, assignProgram, getProgramOptions } from "@/lib/actions/admin";
-import type { Tables } from "@/types/database";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import { getInitials, relativeDate, formatMinutes, SESSION_BG_COLORS } from "@/l
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CheckCircle2, ChevronRight, Pencil, History } from "lucide-react";
 import type { Metadata } from "next";
+import { MemberRoleControl } from "@/components/admin/member-role-control";
 
 export const metadata: Metadata = { title: "Member Detail" };
 export const dynamic = "force-dynamic";
@@ -36,10 +36,10 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
 
   if (!detail.profile) redirect("/admin/members");
 
-  const member = detail.profile as Tables<"profiles">;
-  const assignments = (detail.assignments ?? []) as any[];
-  const recentLogs = (detail.recentLogs ?? []) as any[];
-  const activeAssignment = assignments.find((a: any) => a.is_active);
+  const member = detail.profile;
+  const assignments = detail.assignments;
+  const recentLogs = detail.recentLogs;
+  const activeAssignment = assignments.find((assignment) => assignment.is_active);
 
   return (
     <div className="flex flex-col">
@@ -51,19 +51,26 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
           <div className="flex items-center gap-4">
             <Avatar className="h-14 w-14">
               <AvatarFallback className="text-lg bg-primary/20 text-primary">
-                {getInitials(member!.full_name)}
+                {getInitials(member.full_name)}
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="text-lg font-bold">{member!.full_name ?? "—"}</p>
-              <p className="text-sm text-muted-foreground">{member!.email}</p>
+              <p className="text-lg font-bold">{member.full_name ?? "—"}</p>
+              <p className="text-sm text-muted-foreground">{member.email}</p>
               <div className="flex items-center gap-2 mt-1">
-                <Badge variant={member!.role === "admin" ? "brand" : "secondary"} className="capitalize text-[10px]">
-                  {member!.role}
+                <Badge variant={member.role === "admin" ? "brand" : "secondary"} className="capitalize text-[10px]">
+                  {member.role}
                 </Badge>
-                <span className="text-xs text-muted-foreground">@{member!.username ?? "—"}</span>
+                <span className="text-xs text-muted-foreground">@{member.username ?? "—"}</span>
               </div>
             </div>
+          </div>
+          <div className="mt-4 border-t border-border pt-4">
+            <MemberRoleControl
+              memberId={member.id}
+              currentRole={member.role}
+              isCurrentUser={member.id === adminProfile.id}
+            />
           </div>
         </div>
 
@@ -73,17 +80,17 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
           {activeAssignment ? (
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-medium">{(activeAssignment as any).program?.title}</p>
+                <p className="font-medium">{activeAssignment.program?.title}</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Session index: {activeAssignment.current_session_index}
                 </p>
               </div>
-              <Link href={`/admin/programs/${activeAssignment.program_id}`}>
-                <Button size="sm" variant="outline" className="gap-1.5 shrink-0">
+              <Button asChild size="sm" variant="outline" className="gap-1.5 shrink-0">
+                <Link href={`/admin/programs/${activeAssignment.program_id}`}>
                   <Pencil className="h-3.5 w-3.5" />
                   Edit Program
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No program assigned</p>
@@ -95,11 +102,13 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
             <div className="flex flex-col gap-2 sm:flex-row">
               <select
                 name="programId"
+                aria-label="Program to assign"
+                required
                 className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 defaultValue={activeAssignment?.program_id ?? ""}
               >
                 <option value="">Select program…</option>
-                {programs.map((p: any) => (
+                {programs.map((p) => (
                   <option key={p.id} value={p.id}>{p.title}</option>
                 ))}
               </select>
@@ -131,7 +140,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-              {recentLogs.slice(0, 20).map((log: any) => (
+              {recentLogs.slice(0, 20).map((log) => (
                 <Link
                   key={log.id}
                   href={`/log/${log.id}`}
@@ -161,7 +170,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
                     </p>
                     {log.notes && (
                       <p className="text-xs text-muted-foreground mt-0.5 italic line-clamp-1">
-                        "{log.notes}"
+                        &ldquo;{log.notes}&rdquo;
                       </p>
                     )}
                   </div>
@@ -183,7 +192,7 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-              {assignments.map((a: any) => (
+              {assignments.map((a) => (
                 <div key={a.id} className="flex items-center gap-3 px-4 py-3">
                   <History className="h-4 w-4 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -197,12 +206,12 @@ export default async function MemberDetailPage({ params }: { params: Promise<{ u
                     {a.is_active && (
                       <Badge variant="brand" className="text-[10px]">Active</Badge>
                     )}
-                    <Link href={`/admin/programs/${a.program_id}`}>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs gap-1">
+                    <Button asChild size="sm" variant="ghost" className="h-7 text-xs gap-1">
+                      <Link href={`/admin/programs/${a.program_id}`}>
                         <Pencil className="h-3 w-3" />
                         Edit
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               ))}

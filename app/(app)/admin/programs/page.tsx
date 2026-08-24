@@ -31,8 +31,13 @@ import {
   ClipboardPaste,
 } from "lucide-react";
 
+type Programs = Awaited<ReturnType<typeof getAllPrograms>>;
+type Program = Programs[number];
+type ProgramBlock = NonNullable<Program["blocks"]>[number];
+type ProgramSession = NonNullable<ProgramBlock["sessions"]>[number];
+
 // ─── Session row with edit + delete ──────────────────────────
-function SessionRow({ session: s, onDone }: { session: any; onDone: () => void }) {
+function SessionRow({ session: s, onDone }: { session: ProgramSession; onDone: () => void }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(s.title);
   const [editNotes, setEditNotes] = useState(s.notes ?? "");
@@ -68,12 +73,12 @@ function SessionRow({ session: s, onDone }: { session: any; onDone: () => void }
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <Link href={`/workout/${s.id}`}>
-            <Button size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
+          <Button asChild size="sm" variant="outline" className="gap-1.5 h-7 text-xs">
+            <Link href={`/workout/${s.id}`}>
               <Pencil className="h-3 w-3" />
               {s.exercises?.length ? "Edit" : "Add Exercises"}
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
             onClick={() => { setEditTitle(s.title); setEditNotes(s.notes ?? ""); setEditOpen(true); }}>
             <Pencil className="h-3.5 w-3.5" />
@@ -145,7 +150,7 @@ function AddBlockDialog({
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="gap-1.5">
           <FolderPlus className="h-3.5 w-3.5" />
-          Add Block
+          <span className="hidden sm:inline">Add Block</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">
@@ -201,7 +206,7 @@ function AddSessionDialog({
       <DialogTrigger asChild>
         <Button size="sm" variant="ghost" className="gap-1.5 h-7 text-xs text-muted-foreground hover:text-foreground">
           <CalendarPlus className="h-3.5 w-3.5" />
-          Add Session
+          <span className="hidden sm:inline">Add Session</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">
@@ -301,9 +306,9 @@ For strength templates:
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button size="sm" variant="outline" title="Paste import">
           <ClipboardPaste className="h-4 w-4" />
-          Paste Import
+          <span className="hidden sm:inline">Paste Import</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -368,7 +373,8 @@ For strength templates:
 // ─── Main page ────────────────────────────────────────────────
 
 export default function ProgramsPage() {
-  const [programs, setPrograms] = useState<any[]>([]);
+  const [programs, setPrograms] = useState<Programs>([]);
+  const [loading, setLoading] = useState(true);
   const [newProgramOpen, setNewProgramOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -383,17 +389,24 @@ export default function ProgramsPage() {
   function reload() {
     getAllPrograms().then((data) => {
       setPrograms(data);
-    });
+    }).catch(() => toast.error("Could not refresh programs"));
   }
 
   useEffect(() => {
+    let cancelled = false;
     getAllPrograms().then((data) => {
+      if (cancelled) return;
       setPrograms(data);
       // Auto-expand all blocks initially
       const all = new Set<string>();
-      data.forEach((p: any) => p.blocks?.forEach((b: any) => all.add(b.id)));
+      data.forEach((program) => program.blocks?.forEach((block) => all.add(block.id)));
       setExpandedBlocks(all);
+    }).catch(() => {
+      if (!cancelled) toast.error("Could not load programs");
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
     });
+    return () => { cancelled = true; };
   }, []);
 
   function toggleBlock(blockId: string) {
@@ -440,17 +453,20 @@ export default function ProgramsPage() {
 
   return (
     <div className="flex flex-col">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-between px-4 border-b border-border bg-background/95 backdrop-blur-sm">
-        <h1 className="text-base font-semibold">Programs & Templates</h1>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" loading={creatingStarter} onClick={handleCreateStarterTemplates}>
+      <div className="sticky top-0 z-10 flex h-14 items-center justify-between gap-2 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
+        <h1 className="min-w-0 flex-1 truncate text-base font-semibold">Programs & Templates</h1>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <Button size="sm" variant="outline" loading={creatingStarter} onClick={handleCreateStarterTemplates} title="Starter templates">
             <BookOpen className="h-4 w-4" />
-            Starter Templates
+            <span className="hidden lg:inline">Starter Templates</span>
           </Button>
           <ImportTemplateDialog onDone={reload} />
           <Dialog open={newProgramOpen} onOpenChange={setNewProgramOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" variant="brand"><Plus className="h-4 w-4" />New Program</Button>
+              <Button size="sm" variant="brand" title="New program">
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">New Program</span>
+              </Button>
             </DialogTrigger>
             <DialogContent className="max-w-sm">
               <DialogHeader><DialogTitle>Create Program</DialogTitle></DialogHeader>
@@ -471,13 +487,17 @@ export default function ProgramsPage() {
       </div>
 
       <div className="flex-1 p-4 md:p-6 max-w-3xl mx-auto w-full space-y-4">
-        {programs.length === 0 ? (
+        {loading ? (
+          <div className="rounded-lg border border-border bg-card p-8 text-center">
+            <p className="animate-pulse text-sm text-muted-foreground">Loading programs…</p>
+          </div>
+        ) : programs.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <BookOpen className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">No programs yet.</p>
           </div>
         ) : (
-          programs.map((program: any) => (
+          programs.map((program) => (
             <div key={program.id} className="rounded-xl border border-border bg-card overflow-hidden">
               {/* Program header */}
               <div className="p-4 border-b border-border flex items-start justify-between gap-3">
@@ -486,7 +506,7 @@ export default function ProgramsPage() {
                     <h3 className="font-semibold">{program.title}</h3>
                     {program.is_template && <Badge variant="brand" className="text-[10px]">Template</Badge>}
                     <span className="text-xs text-muted-foreground">
-                      {program.blocks?.length ?? 0} blocks · {program.blocks?.reduce((n: number, b: any) => n + (b.sessions?.length ?? 0), 0)} sessions
+                      {program.blocks?.length ?? 0} blocks · {program.blocks?.reduce((count, block) => count + (block.sessions?.length ?? 0), 0)} sessions
                     </span>
                   </div>
                   {program.description && (
@@ -519,12 +539,12 @@ export default function ProgramsPage() {
                 <div className="p-6 text-center">
                   <Layers className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground mb-3">No blocks yet.</p>
-                  <p className="text-xs text-muted-foreground">Click "Add Block" above to create a training week.</p>
+                  <p className="text-xs text-muted-foreground">Use Add Block above to create a training week.</p>
                 </div>
               )}
 
               {/* Blocks */}
-              {program.blocks?.map((block: any) => {
+              {program.blocks?.map((block) => {
                 const isExpanded = expandedBlocks.has(block.id);
                 return (
                   <div key={block.id} className="border-t border-border">
@@ -576,11 +596,11 @@ export default function ProgramsPage() {
                         {(!block.sessions || block.sessions.length === 0) && (
                           <div className="px-6 py-3 text-center">
                             <p className="text-xs text-muted-foreground">
-                              No sessions yet — click "Add Session" to add one.
+                              Use Add Session to add the first workout.
                             </p>
                           </div>
                         )}
-                        {block.sessions?.map((s: any) => (
+                        {block.sessions?.map((s) => (
                           <SessionRow key={s.id} session={s} onDone={reload} />
                         ))}
                       </div>

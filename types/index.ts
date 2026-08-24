@@ -67,12 +67,7 @@ export type DashboardData = {
   bodyweight: BodyMetric | null;
 };
 
-export type E1rmCard = {
-  exercise: Exercise;
-  estimated_1rm: number;
-  previous_1rm: number | null;
-  change: number | null;
-};
+export type E1rmCard = PersonalRecord & { exercise: Exercise };
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
@@ -96,13 +91,6 @@ export type BodyweightDataPoint = {
 export type LoginFormValues = {
   email: string;
   password: string;
-};
-
-export type SignupFormValues = {
-  email: string;
-  password: string;
-  full_name: string;
-  username: string;
 };
 
 export type ProfileFormValues = {

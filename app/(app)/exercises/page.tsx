@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getAllExercises } from "@/lib/actions/admin";
-import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dumbbell, Plus, Settings } from "lucide-react";
@@ -52,22 +51,22 @@ export default async function ExercisesPage() {
 
   return (
     <div className="flex flex-col">
-      <div className="sticky top-0 z-10 flex h-14 items-center justify-between px-4 border-b border-border bg-background/95 backdrop-blur-sm">
-        <h1 className="text-base font-semibold">Exercise Library</h1>
+      <div className="sticky top-0 z-10 flex h-14 items-center justify-between gap-2 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
+        <h1 className="min-w-0 flex-1 truncate text-base font-semibold">Exercise Library</h1>
         {isAdmin && (
           <div className="flex items-center gap-2">
-            <Link href="/admin/exercises">
-              <Button size="sm" variant="brand">
+            <Button asChild size="sm" variant="brand">
+              <Link href="/admin/exercises">
                 <Plus className="h-4 w-4" />
-                Add Exercise
-              </Button>
-            </Link>
-            <Link href="/admin/programs">
-              <Button size="sm" variant="outline">
+                <span className="hidden sm:inline">Add Exercise</span>
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/programs">
                 <Settings className="h-4 w-4" />
-                Programs
-              </Button>
-            </Link>
+                <span className="hidden sm:inline">Programs</span>
+              </Link>
+            </Button>
           </div>
         )}
       </div>
@@ -125,12 +124,12 @@ export default async function ExercisesPage() {
             <Dumbbell className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">No exercises in the library yet.</p>
             {isAdmin && (
-              <Link href="/admin/exercises" className="mt-3 inline-block">
-                <Button size="sm" variant="brand">
+              <Button asChild size="sm" variant="brand" className="mt-3">
+                <Link href="/admin/exercises">
                   <Plus className="h-4 w-4" />
                   Add First Exercise
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             )}
           </div>
         )}

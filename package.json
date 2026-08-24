@@ -3,9 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "pnpm install --force",
     "dev": "next dev",
-    "prebuild": "pnpm install --force",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

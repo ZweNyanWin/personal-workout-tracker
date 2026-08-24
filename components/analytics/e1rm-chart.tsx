@@ -17,9 +17,9 @@ interface E1rmChartProps {
 }
 
 const LIFT_COLORS = {
-  bench:    "#f97316",
-  squat:    "#3b82f6",
-  deadlift: "#a855f7",
+  bench:    "var(--chart-1)",
+  squat:    "var(--chart-2)",
+  deadlift: "var(--chart-3)",
 };
 
 const LIFT_LABELS = {
@@ -61,25 +61,26 @@ export function E1rmChart({ data }: E1rmChartProps) {
   return (
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={merged} margin={{ top: 4, right: 4, bottom: 4, left: -10 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(222 13% 18%)" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
         <XAxis
           dataKey="date"
           tickFormatter={formatDate}
-          tick={{ fill: "hsl(215 15% 50%)", fontSize: 11 }}
+          tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           minTickGap={30}
         />
         <YAxis
-          tick={{ fill: "hsl(215 15% 50%)", fontSize: 11 }}
+          tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
           tickLine={false}
           axisLine={false}
           tickFormatter={(v) => `${v}kg`}
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: "hsl(222 13% 10%)",
-            border: "1px solid hsl(222 13% 18%)",
+            backgroundColor: "var(--chart-tooltip)",
+            border: "1px solid var(--chart-grid)",
+            color: "var(--pb-foreground)",
             borderRadius: "8px",
             fontSize: "12px",
           }}

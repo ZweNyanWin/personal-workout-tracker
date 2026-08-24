@@ -31,10 +31,18 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
   const { formatted: elapsed } = useWorkoutTimer(log?.started_at ?? null);
 
   useEffect(() => {
-    getWorkoutLog(logId).then((data) => {
-      setLog(data);
-      setLoading(false);
-    });
+    let cancelled = false;
+    getWorkoutLog(logId)
+      .then((data) => {
+        if (!cancelled) setLog(data);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("Could not load this workout");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [logId]);
 
   function handleSetsChange(exerciseId: string, sets: WorkoutLogSet[]) {
@@ -49,11 +57,24 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
 
   function handleFinish() {
     if (!log) return;
+    const parsedBodyweight = bodyweight.trim() ? Number(bodyweight) : undefined;
+    if (
+      parsedBodyweight !== undefined &&
+      (!Number.isFinite(parsedBodyweight) || parsedBodyweight < 30 || parsedBodyweight > 300)
+    ) {
+      toast.error("Bodyweight must be between 30 and 300 kg");
+      return;
+    }
+
     startFinish(async () => {
-      const bw = bodyweight ? parseFloat(bodyweight) : undefined;
-      const result = await finishWorkout(logId, notes, bw, energyRating ?? undefined);
+      const result = await finishWorkout(
+        logId,
+        notes,
+        parsedBodyweight,
+        energyRating ?? undefined
+      );
       if (result.success) {
-        toast.success("Workout completed! 💪");
+        toast.success("Workout completed");
         router.push("/dashboard");
       } else {
         toast.error(result.error);
@@ -78,16 +99,11 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
     );
   }
 
-  const sessionTitle = (log.session as any)?.title ?? log.title;
+  const sessionTitle = log.session?.title ?? log.title ?? "Workout";
   const colorClass = SESSION_BG_COLORS[sessionTitle ?? ""] ?? "bg-primary/20 text-primary border-primary/30";
 
   // ─── Read-only view for completed workouts ────────────────────
-  if ((log as any).status === "completed") {
-    const totalSets = log.exercises.reduce((acc, ex) => acc + (ex.sets?.length ?? 0), 0);
-    const completedSets = log.exercises.reduce(
-      (acc, ex) => acc + (ex.sets?.filter((s) => s.is_completed).length ?? 0),
-      0
-    );
+  if (log.status === "completed") {
     const totalVolume = log.exercises.reduce(
       (acc, ex) =>
         acc +
@@ -123,12 +139,12 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
           {/* Summary stats */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl border border-border bg-card p-3 text-center">
-              <p className="text-lg font-bold font-num">{relativeDate((log as any).date)}</p>
+              <p className="text-lg font-bold font-num">{relativeDate(log.date)}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Date</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-3 text-center">
               <p className="text-lg font-bold font-num">
-                {(log as any).duration_minutes ? formatMinutes((log as any).duration_minutes) : "—"}
+                {log.duration_minutes ? formatMinutes(log.duration_minutes) : "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">Duration</p>
             </div>
@@ -152,7 +168,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
                 const completedSetsList = (ex.sets ?? []).filter((s) => s.is_completed);
                 return (
                   <div key={ex.id} className="rounded-xl border border-border bg-card p-4">
-                    <p className="text-sm font-semibold mb-3">{(ex as any).exercise?.name ?? "Exercise"}</p>
+                    <p className="text-sm font-semibold mb-3">{ex.exercise?.name ?? "Exercise"}</p>
                     {completedSetsList.length === 0 ? (
                       <p className="text-xs text-muted-foreground">No sets completed</p>
                     ) : (
@@ -185,20 +201,20 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
           )}
 
           {/* Energy rating + notes */}
-          {((log as any).energy_rating || (log as any).notes) && (
+          {(log.energy_rating || log.notes) && (
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              {(log as any).energy_rating && (
+              {log.energy_rating && (
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Energy</p>
                   <p className="text-sm">
-                    {["😴 Drained", "😕 Low", "😐 OK", "💪 Good", "🔥 Great"][(log as any).energy_rating - 1]}
+                    {["Drained", "Low", "OK", "Good", "Great"][log.energy_rating - 1]}
                   </p>
                 </div>
               )}
-              {(log as any).notes && (
+              {log.notes && (
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
-                  <p className="text-sm">{(log as any).notes}</p>
+                  <p className="text-sm">{log.notes}</p>
                 </div>
               )}
             </div>
@@ -221,6 +237,8 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
       <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="flex items-center gap-3 px-4 py-3">
           <button
+            type="button"
+            aria-label="Exit workout"
             onClick={() => router.push("/dashboard")}
             className="text-muted-foreground hover:text-foreground tap-none"
           >
@@ -261,7 +279,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
         {log.exercises.map((ex) => (
           <ExerciseCard
             key={ex.id}
-            logExercise={ex as any}
+            logExercise={ex}
             onSetsChange={handleSetsChange}
           />
         ))}
@@ -303,6 +321,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
                     key={value}
                     type="button"
                     onClick={() => setEnergyRating(energyRating === value ? null : value)}
+                    aria-pressed={energyRating === value}
                     className={`flex-1 flex flex-col items-center gap-0.5 rounded-lg border py-2 text-xs transition-colors tap-none ${
                       energyRating === value
                         ? "border-primary/60 bg-primary/10 text-primary"
@@ -322,6 +341,9 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
                   type="number"
                   inputMode="decimal"
                   placeholder="82.5"
+                  min="30"
+                  max="300"
+                  step="0.1"
                   value={bodyweight}
                   onChange={(e) => setBodyweight(e.target.value)}
                   className="flex-1"
@@ -335,6 +357,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
                 placeholder="How did it go? Any misses, PRs, cues to remember…"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                maxLength={1000}
                 rows={3}
               />
             </div>

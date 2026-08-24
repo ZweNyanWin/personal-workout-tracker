@@ -1,4 +1,3 @@
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { formatWeight } from "@/lib/utils";
 import type { E1rmCard } from "@/types";
 
@@ -9,7 +8,7 @@ const LIFT_LABELS: Record<string, string> = {
 };
 
 interface StatsRowProps {
-  e1rmCards: any[];
+  e1rmCards: E1rmCard[];
   weeklyVolume: number;
 }
 
@@ -33,7 +32,7 @@ export function StatsRow({ e1rmCards, weeklyVolume }: StatsRowProps) {
 
       {/* e1RM per lift */}
       {lifts.map((lift) => {
-        const card = e1rmCards.find((c: any) => c.exercise?.primary_lift === lift);
+        const card = e1rmCards.find((item) => item.exercise?.primary_lift === lift);
         const value = card?.value ?? null;
 
         return (

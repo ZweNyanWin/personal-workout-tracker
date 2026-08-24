@@ -11,9 +11,11 @@ interface RestTimerProps {
 }
 
 export function RestTimer({ defaultSeconds = 180 }: RestTimerProps) {
-  const { seconds, running, formatted, start, stop } = useRestTimer();
+  const { seconds, totalSeconds, running, formatted, start, stop } = useRestTimer();
 
-  const presets = [60, 90, 120, 180, 240, 300];
+  const presets = Array.from(new Set([60, 90, 120, defaultSeconds, 180, 240, 300]))
+    .sort((a, b) => a - b);
+  const progress = totalSeconds > 0 ? (seconds / totalSeconds) * 100 : 0;
 
   return (
     <div className={cn(
@@ -26,7 +28,7 @@ export function RestTimer({ defaultSeconds = 180 }: RestTimerProps) {
           <span className="text-sm font-medium">Rest Timer</span>
         </div>
         {running && (
-          <Button variant="ghost" size="icon-sm" onClick={stop}>
+          <Button variant="ghost" size="icon-sm" onClick={stop} aria-label="Stop timer" title="Stop timer">
             <X className="h-4 w-4" />
           </Button>
         )}
@@ -35,7 +37,7 @@ export function RestTimer({ defaultSeconds = 180 }: RestTimerProps) {
       {running ? (
         <div className="space-y-2">
           <p className="text-3xl font-bold font-num text-center tabular-nums">{formatted}</p>
-          <Progress value={0} className="h-1.5" />
+          <Progress value={progress} className="h-1.5" />
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">

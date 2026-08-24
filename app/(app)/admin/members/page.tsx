@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAllMembers } from "@/lib/actions/admin";
 import { Header } from "@/components/layout/header";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, CheckCircle2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { relativeDate } from "@/lib/utils";
 import type { Metadata } from "next";
 
@@ -34,7 +34,7 @@ export default async function MembersPage() {
         <p className="text-sm text-muted-foreground">{members.length} member{members.length !== 1 ? "s" : ""}</p>
 
         <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-          {members.map((m: any) => (
+          {members.map((m) => (
             <Link
               key={m.id}
               href={`/admin/members/${m.id}`}

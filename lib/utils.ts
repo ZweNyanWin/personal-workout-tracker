@@ -5,6 +5,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Keep post-auth redirects on this application origin. */
+export function safeRedirectPath(value: string | null | undefined, fallback = "/dashboard") {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
+
+  try {
+    const parsed = new URL(value, "https://powerbuild.local");
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Format kg weight: shows decimal only when needed (100 → "100", 102.5 → "102.5") */
 export function formatWeight(kg: number | null | undefined): string {
   if (kg == null) return "—";
@@ -111,17 +123,17 @@ export function getInitials(name: string | null | undefined): string {
 
 /** Session colour coding */
 export const SESSION_COLORS: Record<string, string> = {
-  "Upper A": "text-orange-400",
-  "Lower A": "text-blue-400",
-  "Upper B": "text-orange-300",
-  "Lower B": "text-blue-300",
+  "Upper A": "text-orange-700 dark:text-orange-300",
+  "Lower A": "text-blue-700 dark:text-blue-300",
+  "Upper B": "text-amber-700 dark:text-amber-300",
+  "Lower B": "text-cyan-700 dark:text-cyan-300",
 };
 
 export const SESSION_BG_COLORS: Record<string, string> = {
-  "Upper A": "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  "Lower A": "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  "Upper B": "bg-orange-400/20 text-orange-300 border-orange-400/30",
-  "Lower B": "bg-blue-400/20 text-blue-300 border-blue-400/30",
+  "Upper A": "bg-orange-500/10 text-orange-700 border-orange-500/25 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/30",
+  "Lower A": "bg-blue-500/10 text-blue-700 border-blue-500/25 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30",
+  "Upper B": "bg-amber-500/10 text-amber-700 border-amber-500/25 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30",
+  "Lower B": "bg-cyan-500/10 text-cyan-700 border-cyan-500/25 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30",
 };
 
 /** Clamp a number between min and max */

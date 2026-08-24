@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -16,9 +15,11 @@ import { getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect } from "react";
 import type { Profile } from "@/types";
+import { Header } from "@/components/layout/header";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ProfileInput>({
@@ -28,16 +29,21 @@ export default function ProfilePage() {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
+      if (!user) {
+        setLoadError(true);
+        return;
+      }
       supabase
         .from("profiles")
         .select("id, email, full_name, username, avatar_url, role, created_at, updated_at")
         .eq("id", user.id)
         .single()
-        .then(({ data }) => {
+        .then(({ data, error }) => {
           if (data) {
             setProfile(data);
             reset({ full_name: data.full_name ?? "", username: data.username ?? "" });
+          } else if (error) {
+            setLoadError(true);
           }
         });
     });
@@ -58,6 +64,20 @@ export default function ProfilePage() {
     setSaving(false);
   }
 
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+        <div>
+          <h1 className="font-semibold">Profile unavailable</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Your account details could not be loaded.</p>
+        </div>
+        <Button type="button" variant="outline" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+
   if (!profile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -68,9 +88,7 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col">
-      <div className="sticky top-0 z-10 flex h-14 items-center px-4 border-b border-border bg-background/95 backdrop-blur-sm">
-        <h1 className="text-base font-semibold">Profile</h1>
-      </div>
+      <Header profile={profile} title="Profile" />
 
       <div className="p-4 md:p-6 space-y-6 max-w-lg mx-auto w-full">
         {/* Avatar */}
