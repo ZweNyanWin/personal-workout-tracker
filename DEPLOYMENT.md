@@ -23,7 +23,8 @@ In Supabase → **SQL Editor**, run these files **in order**:
 ```
 supabase/migrations/001_schema.sql    ← tables + triggers
 supabase/migrations/002_rls.sql       ← row level security policies
-supabase/migrations/003_qr_login.sql  ← server-only phone-to-desktop QR login requests
+supabase/migrations/003_energy_rating.sql ← optional workout energy rating
+supabase/migrations/004_qr_login.sql  ← server-only phone-to-desktop QR login requests
 ```
 
 Paste each file's contents and click **Run**.
@@ -146,7 +147,7 @@ on both screens and explicitly approves the desktop session on the phone.
 
 Setup:
 
-1. Run `supabase/migrations/003_qr_login.sql` in the **same active Supabase project**
+1. Run `supabase/migrations/004_qr_login.sql` in the **same active Supabase project**
    used by the deployed app.
 2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel Production environment variables and
    `.env.local` for local testing. Get it from the project's API settings. Do not
