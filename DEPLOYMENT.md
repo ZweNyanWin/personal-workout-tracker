@@ -86,7 +86,7 @@ vercel --prod
    ```
    NEXT_PUBLIC_SUPABASE_URL     = https://your-ref.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY = your-anon-key
-   NEXT_PUBLIC_APP_URL           = https://your-app.vercel.app
+   NEXT_PUBLIC_APP_URL           = https://personal-workout-tracker-chi.vercel.app
    SUPABASE_SERVICE_ROLE_KEY     = your-server-only-service-role-key
    ```
 4. Click **Deploy**
@@ -95,9 +95,13 @@ vercel --prod
 
 ## Step 6 — Set production URL in Supabase
 
+For this Vercel project, use `https://personal-workout-tracker-chi.vercel.app`
+as the production origin. Deployment-specific URLs can require Vercel login even
+when the production project domain is public.
+
 1. Supabase → Authentication → URL Configuration
-2. Set **Site URL** to `https://your-app.vercel.app`
-3. Add to **Redirect URLs**: `https://your-app.vercel.app/**`
+2. Set **Site URL** to `https://personal-workout-tracker-chi.vercel.app`
+3. Add to **Redirect URLs**: `https://personal-workout-tracker-chi.vercel.app/**`
 
 ---
 
