@@ -32,7 +32,7 @@ const BASE_ITEMS = [
   { href: "/history",           label: "History", icon: History },
 ];
 
-const MORE_ROUTES = ["/exercises", "/plate-calculator", "/profile"];
+const MORE_ROUTES = ["/1rm", "/exercises", "/plate-calculator", "/profile"];
 
 interface BottomNavProps {
   isAdmin?: boolean;
@@ -55,6 +55,7 @@ export function BottomNav({ isAdmin }: BottomNavProps) {
       ? [{ href: "/analytics", label: "Analytics", icon: BarChart2 }]
       : []),
     { href: "/exercises", label: "Exercise library", icon: BookOpen },
+    { href: "/1rm", label: "1RM predictor", icon: Calculator },
     { href: "/plate-calculator", label: "Plate calculator", icon: Calculator },
     { href: "/profile", label: "Profile", icon: User },
   ];

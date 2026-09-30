@@ -23,6 +23,7 @@ In Supabase → **SQL Editor**, run these files **in order**:
 ```
 supabase/migrations/001_schema.sql    ← tables + triggers
 supabase/migrations/002_rls.sql       ← row level security policies
+supabase/migrations/003_qr_login.sql  ← server-only phone-to-desktop QR login requests
 ```
 
 Paste each file's contents and click **Run**.
@@ -52,11 +53,10 @@ Paste each file's contents and click **Run**.
 ## Step 4 — Local development
 
 ```bash
-# Copy env file
-cp .env.local.example .env.local
-
-# Fill in your Supabase URL and anon key
+# Create .env.local and fill in your Supabase URL and anon key
 # (Supabase → Settings → API)
+# For phone-to-desktop QR sign-in, also set SUPABASE_SERVICE_ROLE_KEY
+# in .env.local. It is server-only: never prefix it with NEXT_PUBLIC.
 
 # Install dependencies
 npm install
@@ -86,6 +86,7 @@ vercel --prod
    NEXT_PUBLIC_SUPABASE_URL     = https://your-ref.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY = your-anon-key
    NEXT_PUBLIC_APP_URL           = https://your-app.vercel.app
+   SUPABASE_SERVICE_ROLE_KEY     = your-server-only-service-role-key
    ```
 4. Click **Deploy**
 
@@ -101,7 +102,12 @@ vercel --prod
 
 ## Step 7 — Post-deploy checklist
 
+- [ ] Production URL reaches the tracker (not Vercel Authentication). If Vercel Deployment Protection is enabled, decide whether to grant access or change its production setting in Vercel; the tracker itself already requires sign-in.
+- [ ] The Supabase project URL resolves and the project is active
+- [ ] Supabase Auth → URL Configuration contains the exact production origin and callback URL
 - [ ] Can sign in with admin account
+- [ ] Can request and resend a sign-in link, confirmation email (for unconfirmed users), and reset link
+- [ ] Phone already signed in can scan a desktop QR, confirm the matching code, and approve desktop sign-in
 - [ ] Dashboard shows next session card
 - [ ] Can tap "Start Workout" and log sets
 - [ ] Marking a set complete saves correctly
@@ -128,11 +134,31 @@ You will never hit free limits with a private 5–6 user group.
 
 ## Adding a new member
 
-1. Tell them to sign up at `https://your-app.vercel.app/signup`
-2. Go to `/admin/members` → click their name
-3. Assign a program
+Public signup is disabled. Create or invite the user in Supabase Auth, then go to
+`/admin/members` to assign a program. They can sign in by password or email link
+after their account is confirmed.
 
-Or create them in Supabase Auth yourself and send them the link.
+## Phone-to-desktop QR sign-in
+
+This is **not** a QR code that merely opens the login page. The phone must already
+be signed in to the same tracker origin. The user compares the six-digit code
+on both screens and explicitly approves the desktop session on the phone.
+
+Setup:
+
+1. Run `supabase/migrations/003_qr_login.sql` in the **same active Supabase project**
+   used by the deployed app.
+2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel Production environment variables and
+   `.env.local` for local testing. Get it from the project's API settings. Do not
+   put it in client code, Git, or a `NEXT_PUBLIC_` variable. Redeploy after setting it.
+3. Open the production `/login` page on a signed-out desktop; choose **Sign in with
+   phone QR**. On an already signed-in phone, scan the code, check that the codes
+   match, and tap **Approve desktop sign-in**. The desktop should enter the app.
+
+Each QR request expires after five minutes and can be consumed once. The QR URL
+contains only an approval secret; the desktop's polling secret is separate. Old
+expired rows can be removed periodically with
+`DELETE FROM qr_login_requests WHERE expires_at < NOW() - INTERVAL '1 day';`.
 
 ---
 

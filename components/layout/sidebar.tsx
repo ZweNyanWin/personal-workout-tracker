@@ -23,6 +23,7 @@ const MEMBER_NAV = [
   { href: "/workout",    label: "Workout",    icon: Dumbbell },
   { href: "/history",    label: "History",    icon: History },
   { href: "/analytics",  label: "Analytics",  icon: BarChart2 },
+  { href: "/1rm",        label: "1RM",        icon: Calculator },
   { href: "/exercises",         label: "Exercises",        icon: BookOpen },
   { href: "/plate-calculator",  label: "Plate Calculator",  icon: Calculator },
   { href: "/profile",           label: "Profile",           icon: User },
