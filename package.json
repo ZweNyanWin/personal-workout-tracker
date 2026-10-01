@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ai:eval": "node ai/run-evals.mjs",
+    "test:pwa": "node --test scripts/pwa.test.mjs",
+    "test:coach": "node --experimental-strip-types --test scripts/coach-program.test.mjs",
+    "test:auth": "node --experimental-strip-types --test scripts/auth-redirect.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

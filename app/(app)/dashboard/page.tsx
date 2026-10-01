@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header";
 import { NextSessionCard } from "@/components/dashboard/next-session-card";
 import { StatsRow } from "@/components/dashboard/stats-row";
 import { RecentWorkouts } from "@/components/dashboard/recent-workouts";
+import { InstallApp } from "@/components/pwa/install-app";
 import { Dumbbell, Scale, Flame } from "lucide-react";
 import { formatWeight, relativeDate } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -44,6 +45,8 @@ export default async function DashboardPage() {
           assignment={data.activeAssignment}
           totalSessions={totalSessions}
         />
+
+        <InstallApp />
 
         {/* Stats row */}
         <div>

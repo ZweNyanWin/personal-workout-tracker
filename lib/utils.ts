@@ -11,6 +11,11 @@ export function safeRedirectPath(value: string | null | undefined, fallback = "/
 
   try {
     const parsed = new URL(value, "https://powerbuild.local");
+    // URL normalization can turn a path such as /.//host into //host.
+    // A returned path must remain local when redirect callers resolve it again.
+    if (parsed.origin !== "https://powerbuild.local" || parsed.pathname.startsWith("//")) {
+      return fallback;
+    }
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
     return fallback;

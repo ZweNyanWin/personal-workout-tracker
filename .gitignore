@@ -12,6 +12,10 @@
 
 # testing
 /coverage
+/ai/evals/results/
+/ai/data/private/
+/ai/training/local-state.json
+/ai/training/local-state.json.tmp
 
 # next.js
 /.next/
@@ -38,4 +42,5 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+__pycache__/
 next-env.d.ts

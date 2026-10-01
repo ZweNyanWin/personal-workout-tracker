@@ -79,6 +79,12 @@ vercel login
 vercel --prod
 ```
 
+Keep `.vercelignore` in place for CLI deployments. It excludes local model data,
+evaluation outputs, vault notes, environment files and generated build folders.
+Deploy fresh application source so Vercel builds using its existing production
+environment variables; do not upload a local prebuilt output containing private
+training state. `next.config.ts` also excludes `ai/` and `docs/` from server traces.
+
 ### Option B — GitHub
 1. Push this repo to GitHub
 2. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
@@ -119,8 +125,11 @@ when the production project domain is public.
 - [ ] Finishing a workout advances session index
 - [ ] Analytics page loads charts
 - [ ] Admin can see all members at `/admin`
-- [ ] PWA install prompt appears on mobile (Chrome/Safari)
+- [ ] Add to Home Screen card appears on login, dashboard, and profile in a browser
+- [ ] iPhone: Safari → Share → Add to Home Screen → Open as Web App (if shown) → Add
+- [ ] Launching from the home-screen icon hides the installation card and clears the notch/home indicator
 - [ ] App icon appears on home screen after install
+- [ ] After one online launch, opening the installed app offline shows the reconnect screen
 
 ---
 
@@ -174,6 +183,23 @@ git add .
 git commit -m "your changes"
 git push  # Vercel auto-deploys on push to main
 ```
+
+## iPhone home-screen app
+
+Open the stable production URL in Safari, tap **Add to Home Screen** in
+PowerBuild for instructions, then use Safari's **Share → Add to Home Screen**.
+If Safari shows **Open as Web App**, leave it enabled and tap **Add**.
+Launch **PowerBuild** from the new icon and sign in there if asked.
+
+The app opens in standalone mode with an Apple touch icon and safe-area spacing.
+Safari installation uses its Share menu; it does not provide Chrome's native
+install prompt. Chrome/Edge use the app's install button when their browser
+provides a native installation event, with menu instructions as a fallback.
+
+The service worker runs in production over HTTPS (or on localhost for production
+testing). It caches only public assets and serves a public reconnect page when
+navigation fails offline. Workout data, sign-in responses, and API calls remain
+online; this does not add offline workout logging.
 
 ---
 

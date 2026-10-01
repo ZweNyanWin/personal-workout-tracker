@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppToaster } from "@/components/theme/app-toaster";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
     template: "%s | PowerBuild",
   },
   description: "Your private powerbuilding training companion — session-based, mobile-first.",
+  applicationName: "PowerBuild",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -28,7 +30,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: "/icons/icon-192.png",
-    apple: "/icons/icon-192.png",
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 
@@ -39,8 +41,6 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: "cover",
 };
 
@@ -67,22 +67,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             `,
           }}
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').catch(() => {});
-                });
-              }
-            `,
-          }}
-        />
       </head>
       <body className="min-h-full bg-background text-foreground antialiased">
         <ThemeProvider>
-          {children}
-          <AppToaster />
+          <PwaProvider>
+            {children}
+            <AppToaster />
+          </PwaProvider>
         </ThemeProvider>
       </body>
     </html>

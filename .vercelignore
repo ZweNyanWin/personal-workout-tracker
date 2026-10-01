@@ -1,0 +1,14 @@
+# Only deploy application source. All model work and vault notes stay local.
+ai/
+docs/
+scripts/
+supabase/
+.env*
+.next/
+node_modules/
+out/
+build/
+coverage/
+*.tsbuildinfo
+**/__pycache__/
+*.log

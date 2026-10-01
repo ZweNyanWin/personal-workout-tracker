@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  devIndicators: false,
+  outputFileTracingExcludes: {
+    "/*": ["./ai/**/*", "./docs/**/*"],
+  },
   generateBuildId: async () => null,
   turbopack: {
     root: process.cwd(),

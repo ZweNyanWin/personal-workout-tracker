@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f8fa" />
+    <title>You're offline | PowerBuild</title>
+    <style>
+      :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #f7f8fa; color: #18202a; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+      main { width: 100%; max-width: 360px; text-align: center; }
+      img { border-radius: 20px; }
+      h1 { font-size: 24px; margin: 24px 0 12px; }
+      p { font-size: 15px; line-height: 1.6; color: #626d7c; }
+      a { display: inline-flex; justify-content: center; align-items: center; margin-top: 12px; min-height: 48px; padding: 12px 24px; border-radius: 12px; background: #dc2626; color: white; font-weight: 600; text-decoration: none; }
+      a:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
+      @media (prefers-color-scheme: dark) { :root { background: #191614; color: #f3efeb; } p { color: #afa59e; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" width="80" height="80" alt="PowerBuild" />
+      <h1>You're offline</h1>
+      <p>PowerBuild needs an internet connection to load and save your workouts. Reconnect, then try again.</p>
+      <a href="">Try again</a>
+    </main>
+  </body>
+</html>
