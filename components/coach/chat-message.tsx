@@ -8,11 +8,11 @@ export function TommyAvatar({ className }: { className?: string }) {
 
 export function TommyChatHeading() {
   return (
-    <div className="flex min-w-0 items-start gap-3">
+    <div className="flex min-w-0 flex-1 items-start gap-3">
       <TommyAvatar className="h-10 w-10 text-base" />
       <div className="min-w-0">
         <h2 className="font-semibold">Talk with Tommy</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your experimental AI coach, running on your Mac.</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Your AI training coach.</p>
       </div>
     </div>
   );

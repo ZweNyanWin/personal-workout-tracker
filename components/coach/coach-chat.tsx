@@ -13,9 +13,9 @@ type MacStatus = { configured: boolean; online: boolean; busy?: boolean };
 type JobResult = { status?: string; answer?: string; error?: string };
 
 const PROMPTS = [
-  "Help me plan a four-week block. Ask what you need to know first.",
-  "What details should I share after missing target reps?",
-  "Explain how to progress from basic to advanced calisthenics.",
+  { label: "Plan a four-week block", question: "Help me plan a four-week block. Ask what you need to know first." },
+  { label: "Review missed reps", question: "What details should I share after missing target reps?" },
+  { label: "Explore calisthenics", question: "Explain how to progress from basic to advanced calisthenics." },
 ];
 
 function requestContext(history: Message[], question: string): Message[] {
@@ -235,7 +235,7 @@ export function CoachChat({ active }: { active: boolean }) {
 
   return (
     <div className="min-w-0 rounded-2xl border border-border bg-card p-5 md:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <TommyChatHeading />
         <Button type="button" size="sm" variant="ghost" aria-label="Refresh Mac connection" disabled={checking || !active} onClick={() => setRefresh((current) => current + 1)}><RefreshCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />Check</Button>
       </div>
@@ -245,9 +245,10 @@ export function CoachChat({ active }: { active: boolean }) {
       {statusError && <p className="mt-2 text-xs leading-relaxed text-destructive" role="alert">{statusError}</p>}
       {status && !status.online && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Keep your Mac awake and online, with Ollama and the PowerBuild bridge running, then tap Check.</p>}
       {status?.busy && !busy && <p className="mt-2 text-xs text-muted-foreground">Another request is running. Wait a moment and check again.</p>}
-      <p className="mt-3 rounded-lg bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">Experimental model. Answers have not been approved as personalized training recommendations. This model can give incorrect effort targets; review its suggestions. Share your actual experience, equipment, and recent sets; saved workouts and reference files are not connected.</p>
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Experimental AI · Verify effort targets. Share your recent sets; saved workouts and reference files are not connected.</p>
       <details className="mt-3 rounded-lg border border-border px-3 py-2 text-xs">
-        <summary className="cursor-pointer font-medium">Check RPE against this reference</summary>
+        <summary className="cursor-pointer font-medium">About Tommy and the RPE reference</summary>
+        <p className="mt-3 leading-relaxed text-muted-foreground">Tommy runs on your Mac and can make mistakes. Answers have not been approved as personalized training recommendations. Share your actual experience, equipment, and completed sets so the conversation has the context it needs.</p>
         <p className="mt-3 leading-relaxed text-muted-foreground">For resistance training, the RIR-based RPE scale estimates how many more clean reps you could complete at the end of a set.</p>
         <table className="mt-2 w-full text-left text-xs">
           <caption className="sr-only">Resistance training RPE and estimated repetitions in reserve</caption>
@@ -257,7 +258,7 @@ export function CoachChat({ active }: { active: boolean }) {
         <p className="mt-2 leading-relaxed text-muted-foreground">RIR is an estimate. RPE is not a percentage of your one-rep max: RPE 8 does not mean 80% of 1RM.</p>
         <p className="mt-2 leading-relaxed text-muted-foreground">References: <a href="https://pubmed.ncbi.nlm.nih.gov/26049792/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">Zourdos et al. study</a> · <a href="https://store.reactivetrainingsystems.com/blogs/rts-basics/beginning-rts" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">RTS coaching guide</a></p>
       </details>
-      {messages.length === 0 && !busy && <div className="my-5 space-y-2">{PROMPTS.map((prompt) => <button type="button" key={prompt} onClick={() => setQuestion(prompt)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left text-sm transition-colors hover:bg-accent">{prompt}<ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>)}</div>}
+      {messages.length === 0 && !busy && <div className="my-5 space-y-2">{PROMPTS.map((prompt) => <button type="button" key={prompt.label} onClick={() => setQuestion(prompt.question)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left text-sm transition-colors hover:bg-accent">{prompt.label}<ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>)}</div>}
       <div className="my-5 space-y-5" role="log" aria-label="Conversation with Tommy" aria-live="polite" aria-relevant="additions">
         {messages.map((message, index) => <ChatMessage key={index} role={message.role} content={message.content} />)}
         {pending && <ChatMessage role="user" content={pending} />}
