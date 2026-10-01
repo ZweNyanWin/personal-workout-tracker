@@ -5,11 +5,13 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const handle = createCoachHandler({
-  authenticate: async () => {
-    const supabase = await createClient();
+  authenticate: async (_request, signal) => {
+    const supabase = await createClient({ signal });
     const { data: { user }, error } = await supabase.auth.getUser();
+    if (error && (error.name === "AuthRetryableFetchError" || !error.status || error.status === 429 || error.status >= 500)) throw new Error("Auth service unavailable");
     if (error || !user) return null;
     const { data: profile, error: profileError } = await supabase.from("profiles").select("id").eq("id", user.id).single();
+    if (profileError && profileError.code !== "PGRST116") throw new Error("Profile verification unavailable");
     if (profileError || !profile) return null;
     return { id: user.id };
   },

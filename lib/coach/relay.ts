@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { withDeadline } from "../async/deadline.ts";
+import { COACH_AUTH_TIMEOUT_MS, COACH_GATEWAY_TIMEOUT_MS } from "./timeouts.ts";
 
 const uuid = z.string().uuid();
 const message = z.object({
@@ -19,9 +21,10 @@ export const coachRequestSchema = z.object({
 
 type RelayConfig = { url?: string; token?: string; appUrl?: string; development?: boolean };
 type Dependencies = {
-  authenticate: (request: Request) => Promise<{ id: string } | null>;
+  authenticate: (request: Request, signal: AbortSignal) => Promise<{ id: string } | null>;
   config: () => RelayConfig;
   fetch?: typeof fetch;
+  authTimeoutMs?: number;
 };
 
 export function validGatewayConfig(config: RelayConfig): { origin: string; token: string } | null {
@@ -85,8 +88,11 @@ export function createCoachHandler(dependencies: Dependencies) {
   return async function handle(request: Request): Promise<Response> {
     if (!["GET", "POST", "DELETE"].includes(request.method)) return json({ error: "Method not allowed" }, 405);
     let user: { id: string } | null;
-    try { user = await dependencies.authenticate(request); }
-    catch { return json({ error: "Could not verify your sign-in. Please try again." }, 503); }
+    try {
+      user = await withDeadline((signal) => dependencies.authenticate(request, signal), dependencies.authTimeoutMs ?? COACH_AUTH_TIMEOUT_MS, request.signal);
+    } catch {
+      return json({ error: "Sign-in verification is temporarily unavailable. Tap Check to retry; your Mac may still be online." }, 503);
+    }
     if (!user) return json({ error: "Sign in to PowerBuild to use the coach." }, 401);
     if (!uuid.safeParse(user.id).success) return json({ error: "This account cannot use the coach." }, 403);
     const config = dependencies.config();
@@ -121,7 +127,7 @@ export function createCoachHandler(dependencies: Dependencies) {
     try {
       const upstream = await network(gateway.origin + path, {
         method: request.method, redirect: "error", cache: "no-store",
-        signal: AbortSignal.any([request.signal, AbortSignal.timeout(8000)]),
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(COACH_GATEWAY_TIMEOUT_MS)]),
         headers: { Authorization: `Bearer ${gateway.token}`, ...(messages ? { "Content-Type": "application/json" } : {}) },
         ...(messages ? { body: JSON.stringify({ userId: user.id, messages }) } : {}),
       });

@@ -3,9 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 
 export async function updateSession(request: NextRequest) {
-  // QR start/poll authenticate with their desktop secret; Coach verifies the
-  // user and profile in its handler. Let these endpoints return JSON errors.
-  if (["/api/qr-login/start", "/api/qr-login/poll", "/api/coach"].includes(request.nextUrl.pathname)) {
+  // These handlers verify their own credentials. Recovery pages check their
+  // session themselves; a stale session must not block opening a new reset link.
+  if (["/api/qr-login/start", "/api/qr-login/poll", "/api/coach", "/auth/callback", "/update-password", "/forgot-password"].includes(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
   let supabaseResponse = NextResponse.next({ request });
@@ -48,7 +48,7 @@ export async function updateSession(request: NextRequest) {
     "/scan-login",
     "/api/qr-login",
   ];
-  const guestOnlyRoutes = ["/login", "/signup", "/forgot-password"];
+  const guestOnlyRoutes = ["/login", "/signup"];
   const matchesRoute = (route: string) =>
     pathname === route || pathname.startsWith(`${route}/`);
   const isPublicRoute = publicRoutes.some(matchesRoute);

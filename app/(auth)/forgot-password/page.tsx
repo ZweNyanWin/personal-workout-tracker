@@ -64,7 +64,12 @@ export default function ForgotPasswordPage() {
         </div>
         <h2 className="text-xl font-bold">Check your email</h2>
         <p className="text-sm text-muted-foreground">
-          We sent a password reset link to <strong>{email}</strong>
+          If an account exists for <strong>{email.trim()}</strong>, you&apos;ll receive a reset link.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Open the newest email link in this same browser on this device.
+          If your email app opens another browser, copy the link into this one.
+          Requesting another link replaces the previous request.
         </p>
         <Button type="button" variant="outline" className="w-full" loading={loading}
           disabled={secondsUntilResend > 0} onClick={sendResetLink}>
@@ -83,6 +88,10 @@ export default function ForgotPasswordPage() {
         <h2 className="text-xl font-bold">Reset password</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Enter your email and we&apos;ll send a reset link
+        </p>
+        <p className="text-sm text-muted-foreground mt-3">
+          Request and open the link in the same browser on the same device.
+          Use the newest email link and keep this browser open.
         </p>
       </div>
 

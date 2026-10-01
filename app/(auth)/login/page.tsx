@@ -37,8 +37,11 @@ export default function LoginPage() {
   const emailField = register("email");
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("error") === "invalid_link") {
-      toast.error("That sign-in link is invalid or expired. Request a new one.");
+    const callbackError = new URLSearchParams(window.location.search).get("error");
+    if (callbackError === "invalid_link") {
+      toast.error("That sign-in link is unavailable. Request a new one and open the newest link in this same browser.");
+    } else if (callbackError === "verification_unavailable") {
+      toast.error("The sign-in service did not finish checking that link. Check your connection and request a fresh link in this browser.");
     }
   }, []);
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { safeRedirectPath } from "../lib/utils.ts";
+import { recoveryCallbackError, recoverySessionState } from "../lib/auth/recovery.ts";
 
 const APP_ORIGIN = "https://powerbuild.example";
 
@@ -42,4 +43,45 @@ test("missing or rejected paths use the caller's local fallback", () => {
   for (const path of [undefined, null, "", "/.//evil.example"]) {
     assert.equal(safeRedirectPath(path, "/login"), "/login");
   }
+});
+
+test("failed recovery callback cannot use an existing signed-in session", () => {
+  const signedIn = { data: { user: { id: "existing-user" } }, error: null };
+  assert.equal(recoverySessionState(signedIn, "invalid_link"), "invalid");
+  assert.equal(recoverySessionState(signedIn, "verification_unavailable"), "unavailable");
+  assert.equal(recoverySessionState(signedIn, null), "ready");
+});
+
+test("missing or expired sessions require a new recovery link", () => {
+  assert.equal(recoverySessionState({ data: { user: null }, error: null }, null), "invalid");
+  for (const error of [
+    { name: "AuthSessionMissingError", status: 400 },
+    { code: "refresh_token_not_found", status: 400 },
+    { code: "bad_jwt", status: 401 },
+  ]) {
+    assert.equal(recoverySessionState({ data: { user: null }, error }, null), "invalid");
+  }
+});
+
+test("auth transport failures offer retry instead of claiming a link expired", () => {
+  for (const error of [
+    { name: "AuthRetryableFetchError", status: 0 },
+    { status: 503 },
+    { status: 429 },
+  ]) {
+    assert.equal(recoverySessionState({ data: { user: null }, error }, null), "unavailable");
+    assert.equal(recoveryCallbackError(error), "verification_unavailable");
+  }
+});
+
+test("callback errors are reduced to safe actionable categories", () => {
+  for (const error of [
+    { name: "AuthPKCEGrantCodeExchangeError" },
+    { code: "bad_code_verifier", status: 400 },
+    { code: "flow_state_expired", status: 400 },
+    { code: "otp_expired", status: 403 },
+  ]) {
+    assert.equal(recoveryCallbackError(error), "invalid_link");
+  }
+  assert.equal(recoveryCallbackError({}), "verification_unavailable");
 });

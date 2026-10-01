@@ -12,7 +12,7 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-node connector/run.mjs
+node connector/run.mjs --background
 connector_result=$?
 if (( connector_result != 0 )); then
   read "?Press Return to close."
