@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCoachHandler, coachRequestSchema, validGatewayConfig } from "../lib/coach/relay.ts";
+import { withDeadline } from "../lib/async/deadline.ts";
+import { COACH_AUTH_TIMEOUT_MS, COACH_GATEWAY_TIMEOUT_MS, COACH_CLIENT_TIMEOUT_MS } from "../lib/coach/timeouts.ts";
 
 const app = "https://powerbuild.example";
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -31,6 +33,66 @@ test("anonymous callers cannot read status, dispatch, poll, or cancel jobs", asy
     assert.equal(response.headers.get("cache-control"), "no-store");
   }
   assert.equal(calls.length, 0);
+});
+
+test("stalled authentication times out, aborts its transport, and never calls the gateway", async () => {
+  let authSignal;
+  const { handle, calls } = fixture(null, {
+    authTimeoutMs: 20,
+    authenticate: async (_request, signal) => { authSignal = signal; return new Promise(() => {}); },
+  });
+  const response = await handle(request());
+  assert.equal(response.status, 503);
+  assert.equal(authSignal.aborted, true);
+  assert.equal(authSignal.reason.name, "TimeoutError");
+  assert.equal(calls.length, 0);
+  const body = await response.json();
+  assert.match(body.error, /Sign-in verification/);
+  assert.equal(body.online, undefined); // Auth failure is not proof the Mac is offline.
+});
+
+test("client cancellation aborts authentication and cannot dispatch a job", async () => {
+  const controller = new AbortController();
+  let authSignal;
+  const { handle, calls } = fixture(null, {
+    authenticate: async (_request, signal) => { authSignal = signal; return new Promise(() => {}); },
+  });
+  const req = new Request(`${app}/api/coach`, { signal: controller.signal });
+  const responsePromise = handle(req);
+  controller.abort();
+  assert.equal((await responsePromise).status, 503);
+  assert.equal(authSignal.aborted, true);
+  assert.equal(calls.length, 0);
+});
+
+test("late authentication completion or failure cannot dispatch after its deadline", async () => {
+  for (const fail of [false, true]) {
+    let complete;
+    const { handle, calls } = fixture(null, {
+      authTimeoutMs: 10,
+      authenticate: () => new Promise((resolve, reject) => { complete = () => fail ? reject(new Error("late failure")) : resolve({ id: userId }); }),
+    });
+    assert.equal((await handle(request("POST"))).status, 503);
+    complete();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.length, 0);
+  }
+});
+
+test("service failures return 503 without disclosing auth details or pretending to sign out", async () => {
+  const { handle, calls } = fixture(null, { authenticate: async () => { throw new Error("private credential"); } });
+  const response = await handle(request());
+  assert.equal(response.status, 503);
+  assert.ok(!(await response.text()).includes("private credential"));
+  assert.equal(calls.length, 0);
+});
+
+test("deadline handles success and rejects an already-cancelled operation before starting it", async () => {
+  assert.equal(await withDeadline(async () => "done", 20), "done");
+  let started = false;
+  await assert.rejects(withDeadline(async () => { started = true; }, 20, AbortSignal.abort()));
+  assert.equal(started, false);
+  assert.ok(COACH_CLIENT_TIMEOUT_MS > COACH_AUTH_TIMEOUT_MS + COACH_GATEWAY_TIMEOUT_MS + 4000);
 });
 
 test("cross-origin and origin-less mutations never reach the connector", async () => {

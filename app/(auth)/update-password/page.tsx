@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { withDeadline } from "@/lib/async/deadline";
+import { recoverySessionState, type RecoverySessionState } from "@/lib/auth/recovery";
 import {
   updatePasswordSchema,
   type UpdatePasswordInput,
@@ -18,8 +20,11 @@ export default function UpdatePasswordPage() {
   const router = useRouter();
   const [supabase] = useState(createClient);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+  const [sessionState, setSessionState] = useState<RecoverySessionState>("unavailable");
+  const [callbackFailed, setCallbackFailed] = useState(false);
+  const [checkAttempt, setCheckAttempt] = useState(0);
   const [loading, setLoading] = useState(false);
+  const saving = useRef(false);
 
   const {
     register,
@@ -31,39 +36,64 @@ export default function UpdatePasswordPage() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
 
     async function checkSession() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (active) {
-        setHasSession(!!user);
-        setCheckingSession(false);
+      const callbackError = new URLSearchParams(window.location.search).get("error");
+      const failed = callbackError === "invalid_link" || callbackError === "verification_unavailable";
+      setCallbackFailed(failed);
+      try {
+        // This read-only UI check has a deadline even if the SDK is still
+        // waiting for a session refresh. Late results cannot replace a retry.
+        const result = failed
+          ? { data: { user: null }, error: null }
+          : await withDeadline(() => supabase.auth.getUser(), 12_000, controller.signal);
+        if (active) setSessionState(recoverySessionState(result, callbackError));
+      } catch {
+        if (active) setSessionState("unavailable");
+      } finally {
+        if (active) setCheckingSession(false);
       }
     }
 
     void checkSession();
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [supabase]);
+  }, [supabase, checkAttempt]);
 
   async function onSubmit(values: UpdatePasswordInput) {
+    if (saving.current || sessionState !== "ready") return;
+    saving.current = true;
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({
-      password: values.password,
-    });
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: values.password,
+      });
+      if (error) {
+        if (recoverySessionState({ data: { user: null }, error }, null) === "invalid") {
+          setSessionState("invalid");
+          toast.error("Your reset session expired. Request a fresh link.");
+        } else if (error.code === "same_password") {
+          toast.error("Choose a password different from your current password.");
+        } else if (error.code === "weak_password") {
+          toast.error("Choose a stronger password with more characters and a mix of letters, numbers, and symbols.");
+        } else {
+          toast.error("Could not update your password. Try again, or request a fresh reset link.");
+        }
+        return;
+      }
 
-    if (error) {
-      toast.error(error.message);
+      toast.success("Password updated");
+      router.replace("/dashboard");
+      router.refresh();
+    } catch {
+      toast.error("Could not reach the sign-in service. Check your connection and try again.");
+    } finally {
+      saving.current = false;
       setLoading(false);
-      return;
     }
-
-    toast.success("Password updated");
-    router.replace("/dashboard");
-    router.refresh();
   }
 
   if (checkingSession) {
@@ -74,15 +104,30 @@ export default function UpdatePasswordPage() {
     );
   }
 
-  if (!hasSession) {
+  if (sessionState !== "ready") {
     return (
       <div className="text-center space-y-5">
         <div>
-          <h2 className="text-xl font-bold">Reset link unavailable</h2>
+          <h2 className="text-xl font-bold">
+            {sessionState === "invalid" ? "Reset link unavailable" : "Could not check reset link"}
+          </h2>
           <p className="text-sm text-muted-foreground mt-2">
-            This link is invalid or expired. Request a fresh link on this device.
+            {sessionState === "invalid"
+              ? "This link may be expired, already used, or opened in a different browser."
+              : "The sign-in service did not finish verifying your reset session. Check your connection."}
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Request a fresh link here and open only the newest email link in this same browser on this device.
           </p>
         </div>
+        {sessionState === "unavailable" && !callbackFailed && (
+          <Button type="button" variant="outline" className="w-full" onClick={() => {
+            setCheckingSession(true);
+            setCheckAttempt((attempt) => attempt + 1);
+          }}>
+            Check again
+          </Button>
+        )}
         <Button
           type="button"
           className="w-full"

@@ -5,6 +5,7 @@ import { ArrowUpRight, LoaderCircle, RefreshCw, Send, Square } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { COACH_CLIENT_TIMEOUT_MS } from "@/lib/coach/timeouts";
 
 type Message = { role: "user" | "assistant"; content: string };
 type MacStatus = { configured: boolean; online: boolean; busy?: boolean };
@@ -70,7 +71,7 @@ export function CoachChat({ active }: { active: boolean }) {
     let controller: AbortController | null = null;
     async function check() {
       controller = new AbortController();
-      const timeout = setTimeout(() => controller?.abort(), 12000);
+      const timeout = setTimeout(() => controller?.abort(), COACH_CLIENT_TIMEOUT_MS);
       setChecking(true);
       try {
         const response = await fetch("/api/coach", { cache: "no-store", signal: controller.signal });
@@ -84,7 +85,7 @@ export function CoachChat({ active }: { active: boolean }) {
       } catch (failure) {
         if (!disposed) {
           setStatus(null);
-          setStatusError(failure instanceof Error && failure.name !== "AbortError" ? failure.message : "Connection check timed out. Try again.");
+          setStatusError(failure instanceof Error && failure.name !== "AbortError" ? failure.message : "PowerBuild took too long to check the connection. Tap Check to retry; check your internet connection if it continues.");
         }
       } finally {
         clearTimeout(timeout);
@@ -136,7 +137,7 @@ export function CoachChat({ active }: { active: boolean }) {
         return;
       }
       controller = new AbortController();
-      const timeout = setTimeout(() => controller?.abort(), 12000);
+      const timeout = setTimeout(() => controller?.abort(), COACH_CLIENT_TIMEOUT_MS);
       try {
         const response = await fetch(`/api/coach?jobId=${encodeURIComponent(jobId!)}`, { cache: "no-store", signal: controller.signal });
         const data = await responseData(response);
@@ -191,7 +192,7 @@ export function CoachChat({ active }: { active: boolean }) {
     setElapsed(0);
     setError("");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), COACH_CLIENT_TIMEOUT_MS);
     try {
       const response = await fetch("/api/coach", {
         method: "POST", cache: "no-store", signal: controller.signal,

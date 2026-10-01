@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn, execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { access, lstat, mkdir, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, open, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import net from 'node:net';
 import https from 'node:https';
@@ -16,10 +16,42 @@ const privateDir = path.join(os.homedir(), 'workout-ai', 'powerbuild-connector')
 const configPath = path.join(privateDir, 'config.json');
 const lockPath = path.join(privateDir, 'launcher.lock.json');
 const runtimePath = path.join(privateDir, 'runtime.json');
+const backgroundLogPath = path.join(privateDir, 'launcher.log');
 const localGateway = 'http://127.0.0.1:11435';
 const statusBytesLimit = 16384;
 const dnsCache = new Map();
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+export function parseLauncherFlags(flags) {
+  const accepted = new Set(['--help', '--status', '--stop', '--no-publish', '--background']);
+  const exclusive = flags.some((flag) => ['--help', '--status', '--stop'].includes(flag));
+  if (flags.some((flag) => !accepted.has(flag)) || new Set(flags).size !== flags.length || (exclusive && flags.length !== 1)) {
+    throw new Error('Use --status, --stop, --no-publish, or --background. Only --background and --no-publish may be combined.');
+  }
+  return new Set(flags);
+}
+
+/** Detach only the normal launcher; its own gateway, tunnel and keep-awake lifecycle stays unchanged. */
+export async function launchBackground({ launcherScript, launcherArgs = [], projectRoot, logPath }) {
+  const log = await open(logPath, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+  try {
+    const stat = await log.stat();
+    if (!stat.isFile() || (stat.mode & 0o077) !== 0 || (process.getuid && stat.uid !== process.getuid())) {
+      throw new Error('The background log must be a private file owned by you.');
+    }
+    await log.write(`\nPowerBuild launcher requested at ${new Date().toISOString()}\n`);
+    const launcher = spawn(process.execPath, [launcherScript, ...launcherArgs], {
+      cwd: projectRoot, detached: true, stdio: ['ignore', log.fd, log.fd],
+      env: { ...process.env, POWERBUILD_LAUNCHER_BACKGROUND: '1' },
+    });
+    await new Promise((resolve, reject) => {
+      launcher.once('spawn', resolve);
+      launcher.once('error', () => reject(new Error('The background launcher could not start.')));
+    });
+    launcher.unref();
+    return launcher.pid;
+  } finally { await log.close(); }
+}
 
 export function validateConfig(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid connector configuration.');
@@ -234,24 +266,21 @@ async function waitForStatus(base, token, isAlive, milliseconds, failureMessage)
 }
 
 async function main() {
-  const flags = process.argv.slice(2);
-  const accepted = new Set(['--help', '--status', '--stop', '--no-publish']);
-  if (flags.some((flag) => !accepted.has(flag)) || new Set(flags).size !== flags.length || flags.filter((flag) => flag !== '--help').length > 1) {
-    throw new Error('Use one of: --status, --stop, --no-publish; or run with no option to connect PowerBuild.');
-  }
-  if (flags.includes('--help')) {
-    console.log('PowerBuild personal Mac AI connector\n\nnode connector/run.mjs                Start and update the deployed connection\nnode connector/run.mjs --status       Check whether this launcher is running\nnode connector/run.mjs --stop         Stop this launcher and its own children\nnode connector/run.mjs --no-publish   Start locally; do not change Vercel\n\nKeep this terminal open while using AI. Stop with Control-C.');
+  const flags = parseLauncherFlags(process.argv.slice(2));
+  if (flags.has('--help')) {
+    console.log('PowerBuild personal Mac AI connector\n\nnode connector/run.mjs                Start in this terminal and update the deployed connection\nnode connector/run.mjs --background  Start in the background; this terminal may close\nnode connector/run.mjs --status      Check the launcher and coach connection\nnode connector/run.mjs --stop        Stop this launcher and its own children\nnode connector/run.mjs --no-publish  Start locally; do not change Vercel\n\nBackground progress is saved privately at $HOME/workout-ai/powerbuild-connector/launcher.log. Keep the Mac awake with its lid open. Stop with --stop, or Control-C for a foreground launcher.');
     return;
   }
 
-  if (flags.includes('--status') || flags.includes('--stop')) {
+  if (flags.has('--status') || flags.has('--stop')) {
     const lock = await readJson(lockPath, true);
     if (!await ownsProcess(lock)) {
-      console.log('PowerBuild connector is not running.');
+      console.log('PowerBuild launcher is not running.');
       if (lock && isRunning(lock.pid)) console.log('The lock belongs to another process; it was left untouched.');
+      if (await portIsOpen()) console.log('Port 11435 is still occupied. Existing AI services may remain active, but the launcher cannot manage them. They were left untouched; do not start a second copy.');
       return;
     }
-    if (flags.includes('--stop')) {
+    if (flags.has('--stop')) {
       process.kill(lock.pid, 'SIGTERM');
       const deadline = Date.now() + 10000;
       while (isRunning(lock.pid) && Date.now() < deadline) await sleep(200);
@@ -278,6 +307,29 @@ async function main() {
   await mkdir(privateDir, { recursive: true, mode: 0o700 });
   const previousRuntime = await readJson(runtimePath, true);
   if (previousRuntime && isRunning(previousRuntime.pid)) throw new Error('A previous connector runtime is still active. Use --status or --stop first.');
+  if (flags.has('--background')) {
+    const existing = await readJson(lockPath, true);
+    if (existing && isRunning(existing.pid)) throw new Error('A connector launcher already has this lock. Use --status or --stop; do not start a second copy.');
+    if (await portIsOpen()) throw new Error('Port 11435 is already occupied. Existing services were left untouched; check --status before restarting.');
+    const pid = await launchBackground({
+      launcherScript: scriptPath, launcherArgs: flags.has('--no-publish') ? ['--no-publish'] : [],
+      projectRoot: config.projectRoot, logPath: backgroundLogPath,
+    });
+    // Confirm the normal child acquired its own lock before reporting a start.
+    const deadline = Date.now() + 5000;
+    let started = false;
+    while (Date.now() < deadline && isRunning(pid)) {
+      const current = await readJson(lockPath, true);
+      if (current?.pid === pid && await ownsProcess(current)) { started = true; break; }
+      await sleep(100);
+    }
+    if (!started) throw new Error('The background launcher did not finish starting. Check $HOME/workout-ai/powerbuild-connector/launcher.log.');
+    console.log(`PowerBuild launcher started in the background (PID ${pid}). This terminal may close.`);
+    console.log('Connection setup and deployment continue in the background. Check with node connector/run.mjs --status.');
+    console.log('Progress log: $HOME/workout-ai/powerbuild-connector/launcher.log');
+    console.log(`Open PowerBuild: ${config.appUrl}`);
+    return;
+  }
   const lock = { pid: process.pid, id: randomUUID(), scriptPath, nodePath: process.execPath, processStamp: await processStamp(process.pid), startedAt: new Date().toISOString() };
   await claimLock(lock);
   const children = new Set();
@@ -381,7 +433,7 @@ async function main() {
     if (stopping) throw new Error('Connector startup was interrupted.');
     await writeFile(runtimePath, JSON.stringify({ pid: process.pid, url: tunnelUrl, startedAt: lock.startedAt }), { mode: 0o600 });
     console.log('Your Mac’s protected AI connection is ready.');
-    if (flags.includes('--no-publish')) {
+    if (flags.has('--no-publish')) {
       console.log('Vercel was left unchanged. This mode is for initial setup and local verification.');
     } else {
       console.log('Updating PowerBuild’s production connection and rebuilding its existing hosted source. This can take a few minutes.');
@@ -391,7 +443,9 @@ async function main() {
     }
     ready = true;
     console.log(`Open PowerBuild: ${config.appUrl}`);
-    console.log('Keep this terminal open and the Mac awake with its lid open. Stop with Control-C.');
+    console.log(process.env.POWERBUILD_LAUNCHER_BACKGROUND === '1'
+      ? 'The launcher is running in the background. Keep the Mac awake with its lid open. Stop with node connector/run.mjs --stop.'
+      : 'Keep this terminal open and the Mac awake with its lid open. Stop with Control-C.');
     await finished;
   } catch (error) {
     if (!stopping) console.error(error.message);
