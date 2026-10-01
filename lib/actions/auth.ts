@@ -7,7 +7,9 @@ import { loginSchema, profileSchema } from "@/lib/validations";
 import { safeRedirectPath } from "@/lib/utils";
 import type { ActionResult } from "@/types";
 
-export async function login(formData: FormData): Promise<ActionResult> {
+type LoginResult = ActionResult | { success: false; error: string; needsConfirmation: true };
+
+export async function login(formData: FormData): Promise<LoginResult> {
   const raw = {
     email: formData.get("email") as string,
     password: formData.get("password") as string,
@@ -20,10 +22,26 @@ export async function login(formData: FormData): Promise<ActionResult> {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  let signInResult: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
+  try {
+    signInResult = await supabase.auth.signInWithPassword(parsed.data);
+  } catch {
+    return { success: false, error: "Could not reach the sign-in service. Try again in a moment." };
+  }
+  const { error } = signInResult;
 
   if (error) {
-    return { success: false, error: "Invalid email or password" };
+    if (error.code === "email_not_confirmed") {
+      return {
+        success: false,
+        error: "Confirm your email before signing in. You can resend the confirmation below.",
+        needsConfirmation: true,
+      };
+    }
+    if (error.code === "invalid_credentials") {
+      return { success: false, error: "Invalid email or password" };
+    }
+    return { success: false, error: `Sign-in failed: ${error.message}` };
   }
 
   revalidatePath("/", "layout");

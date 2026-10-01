@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!profile) redirect("/login");
 
   return (
-    <div className="flex h-dvh bg-background">
+    <div className="flex h-dvh bg-background safe-top safe-left safe-right">
       {/* Desktop sidebar — hidden on mobile */}
       <div className="hidden md:flex md:shrink-0">
         <Sidebar profile={profile} />

@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useEffect } from "react";
 import type { Profile } from "@/types";
 import { Header } from "@/components/layout/header";
+import { InstallApp } from "@/components/pwa/install-app";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -134,6 +135,8 @@ export default function ProfilePage() {
             </Button>
           </form>
         </div>
+
+        <InstallApp />
 
         {/* Sign out */}
         <div className="rounded-xl border border-border bg-card p-5">

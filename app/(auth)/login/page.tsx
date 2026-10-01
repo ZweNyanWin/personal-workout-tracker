@@ -13,11 +13,17 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { safeRedirectPath } from "@/lib/utils";
 import { Mail, MailCheck } from "lucide-react";
+import { QrDesktopLogin } from "@/components/auth/qr-desktop-login";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [magicLinkLoading, setMagicLinkLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [confirmationNeeded, setConfirmationNeeded] = useState(false);
+  const [confirmationLoading, setConfirmationLoading] = useState(false);
+  const [showQrLogin, setShowQrLogin] = useState(false);
+  const [lastEmailSentAt, setLastEmailSentAt] = useState(0);
+  const [secondsUntilResend, setSecondsUntilResend] = useState(0);
 
   const {
     register,
@@ -28,12 +34,32 @@ export default function LoginPage() {
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
   });
+  const emailField = register("email");
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("error") === "invalid_link") {
       toast.error("That sign-in link is invalid or expired. Request a new one.");
     }
   }, []);
+
+  useEffect(() => {
+    if (!lastEmailSentAt) return;
+    const update = () => setSecondsUntilResend(
+      Math.max(0, Math.ceil((lastEmailSentAt + 60_000 - Date.now()) / 1000))
+    );
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [lastEmailSentAt]);
+
+  function callbackUrl() {
+    const nextPath = safeRedirectPath(
+      new URLSearchParams(window.location.search).get("next")
+    );
+    const url = new URL("/auth/callback", window.location.origin);
+    url.searchParams.set("next", nextPath);
+    return url.toString();
+  }
 
   async function onSubmit(values: LoginInput) {
     setLoading(true);
@@ -45,41 +71,73 @@ export default function LoginPage() {
       safeRedirectPath(new URLSearchParams(window.location.search).get("next"))
     );
 
-    const result = await login(formData);
-    if (result && !result.success) {
-      toast.error(result.error);
+    try {
+      const result = await login(formData);
+      if (result && !result.success) {
+        toast.error(result.error);
+        setConfirmationNeeded("needsConfirmation" in result && result.needsConfirmation === true);
+        setLoading(false);
+      }
+    } catch {
+      toast.error("Could not reach the sign-in service. Try again in a moment.");
       setLoading(false);
     }
     // On success, server action redirects → no need to do anything
   }
 
   async function sendMagicLink() {
+    if (secondsUntilResend > 0) return;
     const emailIsValid = await trigger("email");
     if (!emailIsValid) return;
 
     setMagicLinkLoading(true);
-    const nextPath = safeRedirectPath(
-      new URLSearchParams(window.location.search).get("next")
-    );
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", nextPath);
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: getValues("email"),
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: callbackUrl.toString(),
-      },
-    });
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      setMagicLinkSent(true);
-      toast.success("Sign-in link sent");
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email: getValues("email"),
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: callbackUrl(),
+        },
+      });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        setMagicLinkSent(true);
+        setLastEmailSentAt(Date.now());
+        toast.success("Sign-in link sent");
+      }
+    } catch {
+      toast.error("Could not reach the email service. Try again in a moment.");
+    } finally {
+      setMagicLinkLoading(false);
     }
-    setMagicLinkLoading(false);
+  }
+
+  async function resendConfirmation() {
+    if (secondsUntilResend > 0) return;
+    const emailIsValid = await trigger("email");
+    if (!emailIsValid) return;
+
+    setConfirmationLoading(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: getValues("email"),
+        options: { emailRedirectTo: callbackUrl() },
+      });
+      if (error) {
+        toast.error(`Could not resend confirmation: ${error.message}`);
+      } else {
+        setLastEmailSentAt(Date.now());
+        toast.success("Confirmation email requested. Check your inbox and spam folder.");
+      }
+    } catch {
+      toast.error("Could not reach the email service. Try again in a moment.");
+    } finally {
+      setConfirmationLoading(false);
+    }
   }
 
   return (
@@ -99,7 +157,12 @@ export default function LoginPage() {
             autoComplete="email"
             autoFocus
             error={!!errors.email}
-            {...register("email")}
+            {...emailField}
+            onChange={(event) => {
+              emailField.onChange(event);
+              setMagicLinkSent(false);
+              setConfirmationNeeded(false);
+            }}
           />
           {errors.email && (
             <p className="text-xs text-destructive">{errors.email.message}</p>
@@ -141,11 +204,15 @@ export default function LoginPage() {
       </div>
 
       {magicLinkSent ? (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm">
+        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm space-y-2">
           <div className="flex items-start gap-2">
             <MailCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
             <p>Check your email and open the sign-in link on this device.</p>
           </div>
+          <Button type="button" variant="outline" className="w-full" loading={magicLinkLoading}
+            disabled={secondsUntilResend > 0} onClick={sendMagicLink}>
+            {secondsUntilResend > 0 ? `Resend sign-in link in ${secondsUntilResend}s` : "Resend sign-in link"}
+          </Button>
         </div>
       ) : (
         <Button
@@ -160,6 +227,20 @@ export default function LoginPage() {
           Email me a sign-in link
         </Button>
       )}
+
+      {confirmationNeeded && (
+        <Button type="button" variant="outline" className="mt-3 w-full"
+          loading={confirmationLoading} disabled={secondsUntilResend > 0}
+          onClick={resendConfirmation}>
+          {secondsUntilResend > 0 ? `Resend confirmation in ${secondsUntilResend}s` : "Resend confirmation email"}
+        </Button>
+      )}
+
+      <Button type="button" variant="ghost" className="mt-3 w-full"
+        onClick={() => setShowQrLogin((value) => !value)}>
+        {showQrLogin ? "Hide phone sign-in" : "Sign in with phone QR"}
+      </Button>
+      {showQrLogin && <QrDesktopLogin />}
 
       <p className="mt-5 text-center text-xs text-muted-foreground">
         Access is managed by your administrator.

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Dumbbell } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { InstallApp } from "@/components/pwa/install-app";
 
 export const metadata: Metadata = {
   title: "Sign In",
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center bg-background px-4 py-12">
+    <div className="relative min-h-dvh flex flex-col items-center justify-center bg-background pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[calc(3rem+env(safe-area-inset-top))] pb-[calc(3rem+env(safe-area-inset-bottom))]">
       <div className="fixed right-4 top-4 z-10 safe-top">
         <ThemeToggle />
       </div>
@@ -34,6 +35,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <p className="mt-6 text-xs text-muted-foreground text-center">
         Private training workspace. Invite-only access.
       </p>
+      <div className="mt-6 w-full max-w-sm">
+        <InstallApp />
+      </div>
     </div>
   );
 }

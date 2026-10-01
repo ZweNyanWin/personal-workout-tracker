@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Calculator,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -21,8 +22,10 @@ import type { Profile } from "@/types";
 const MEMBER_NAV = [
   { href: "/dashboard",  label: "Dashboard",  icon: LayoutDashboard },
   { href: "/workout",    label: "Workout",    icon: Dumbbell },
+  { href: "/coach",      label: "AI Coach",   icon: Sparkles },
   { href: "/history",    label: "History",    icon: History },
   { href: "/analytics",  label: "Analytics",  icon: BarChart2 },
+  { href: "/1rm",        label: "1RM",        icon: Calculator },
   { href: "/exercises",         label: "Exercises",        icon: BookOpen },
   { href: "/plate-calculator",  label: "Plate Calculator",  icon: Calculator },
   { href: "/profile",           label: "Profile",           icon: User },
@@ -37,17 +40,19 @@ const ADMIN_NAV = [
 
 interface SidebarProps {
   profile: Profile;
+  previewMode?: boolean;
 }
 
-export function Sidebar({ profile }: SidebarProps) {
-  const pathname = usePathname();
+export function Sidebar({ profile, previewMode = false }: SidebarProps) {
+  const currentPath = usePathname();
+  const pathname = previewMode ? "/coach" : currentPath;
   const isAdmin = profile.role === "admin";
 
   function NavItem({ href, label, icon: Icon }: { href: string; label: string; icon: React.ElementType }) {
     const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
     return (
       <Link
-        href={href}
+        href={previewMode && href === "/coach" ? "/preview/coach" : href}
         className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors tap-none",
           active

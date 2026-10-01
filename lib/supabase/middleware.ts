@@ -3,6 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 
 export async function updateSession(request: NextRequest) {
+  // These endpoints authenticate with an opaque desktop secret, not a user cookie.
+  // Skipping a redundant Auth network call also lets them report setup errors cleanly.
+  if (["/api/qr-login/start", "/api/qr-login/poll"].includes(request.nextUrl.pathname)) {
+    return NextResponse.next({ request });
+  }
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
@@ -40,6 +45,8 @@ export async function updateSession(request: NextRequest) {
     "/forgot-password",
     "/update-password",
     "/auth/callback",
+    "/scan-login",
+    "/api/qr-login",
   ];
   const guestOnlyRoutes = ["/login", "/signup", "/forgot-password"];
   const matchesRoute = (route: string) =>
