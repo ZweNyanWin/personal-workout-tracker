@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
   outputFileTracingExcludes: {
-    "/*": ["./ai/**/*", "./docs/**/*"],
+    "/*": ["./ai/**/*", "./connector/**/*", "./docs/**/*"],
   },
   generateBuildId: async () => null,
   turbopack: {

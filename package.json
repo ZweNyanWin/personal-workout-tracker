@@ -10,7 +10,10 @@
     "ai:eval": "node ai/run-evals.mjs",
     "test:pwa": "node --test scripts/pwa.test.mjs",
     "test:coach": "node --experimental-strip-types --test scripts/coach-program.test.mjs",
-    "test:auth": "node --experimental-strip-types --test scripts/auth-redirect.test.mjs"
+    "test:auth": "node --experimental-strip-types --test scripts/auth-redirect.test.mjs",
+    "test:coach-relay": "node --experimental-strip-types --test scripts/coach-relay.test.mjs",
+    "coach:connect": "node connector/run.mjs",
+    "test:connector": "node --test connector/*.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -1,5 +1,6 @@
 # Only deploy application source. All model work and vault notes stay local.
 /ai/
+/connector/
 /docs/
 /scripts/
 /supabase/
