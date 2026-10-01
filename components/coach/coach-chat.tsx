@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, LoaderCircle, RefreshCw, Send, Square } from "lucide-react";
+import { ArrowUpRight, RefreshCw, Send, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { COACH_CLIENT_TIMEOUT_MS } from "@/lib/coach/timeouts";
+import { ChatMessage, TommyChatHeading, TommyThinking } from "@/components/coach/chat-message";
 
 type Message = { role: "user" | "assistant"; content: string };
 type MacStatus = { configured: boolean; online: boolean; busy?: boolean };
@@ -235,7 +236,7 @@ export function CoachChat({ active }: { active: boolean }) {
   return (
     <div className="min-w-0 rounded-2xl border border-border bg-card p-5 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="font-semibold">Ask your experimental coach</h2><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Real answers from workout-coach running on your Mac.</p></div>
+        <TommyChatHeading />
         <Button type="button" size="sm" variant="ghost" aria-label="Refresh Mac connection" disabled={checking || !active} onClick={() => setRefresh((current) => current + 1)}><RefreshCw className={cn("h-3.5 w-3.5", checking && "animate-spin")} />Check</Button>
       </div>
       <div className="mt-4 flex items-center gap-2 text-xs" role="status">
@@ -257,16 +258,16 @@ export function CoachChat({ active }: { active: boolean }) {
         <p className="mt-2 leading-relaxed text-muted-foreground">References: <a href="https://pubmed.ncbi.nlm.nih.gov/26049792/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">Zourdos et al. study</a> · <a href="https://store.reactivetrainingsystems.com/blogs/rts-basics/beginning-rts" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">RTS coaching guide</a></p>
       </details>
       {messages.length === 0 && !busy && <div className="my-5 space-y-2">{PROMPTS.map((prompt) => <button type="button" key={prompt} onClick={() => setQuestion(prompt)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left text-sm transition-colors hover:bg-accent">{prompt}<ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" /></button>)}</div>}
-      <div className="my-5 space-y-4" role="log" aria-label="Coach conversation" aria-live="polite" aria-relevant="additions">
-        {messages.map((message, index) => <div key={index} className={cn("min-w-0 whitespace-pre-wrap break-words rounded-xl p-4 text-sm leading-relaxed [overflow-wrap:anywhere]", message.role === "user" ? "ml-4 bg-secondary" : "bg-muted/60")}><p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">{message.role === "user" ? "You" : "Coach · experimental AI"}</p>{message.content}</div>)}
-        {pending && <div className="ml-4 whitespace-pre-wrap break-words rounded-xl bg-secondary p-4 text-sm leading-relaxed [overflow-wrap:anywhere]"><p className="mb-2 text-[10px] font-semibold uppercase text-muted-foreground">You</p>{pending}</div>}
+      <div className="my-5 space-y-5" role="log" aria-label="Conversation with Tommy" aria-live="polite" aria-relevant="additions">
+        {messages.map((message, index) => <ChatMessage key={index} role={message.role} content={message.content} />)}
+        {pending && <ChatMessage role="user" content={pending} />}
       </div>
-      {busy && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border p-3"><p className="flex items-center gap-2 text-xs" role="status"><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" />{jobId ? "Generating" : "Sending"}<span aria-hidden="true">· {elapsed}s</span></p><Button type="button" variant="outline" size="sm" onClick={stop}><Square className="h-3 w-3" />Stop</Button></div>}
+      {busy && <TommyThinking sending={!jobId} elapsed={elapsed}><Button type="button" variant="outline" size="sm" onClick={stop}><Square className="h-3 w-3" />Stop</Button></TommyThinking>}
       {busy && <p className="mb-3 text-xs leading-relaxed text-muted-foreground">Your Mac can take up to 2½ minutes to answer before the model request times out. Keep it awake; try shorter questions for faster replies.</p>}
       {error && <p className="mb-3 text-xs leading-relaxed text-destructive" role="alert">{error}</p>}
       <form onSubmit={(event) => { event.preventDefault(); void ask(); }} className="space-y-2">
-        <Label htmlFor="coach-question">Your training question</Label>
-        <textarea id="coach-question" placeholder="Ask about your training…" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} rows={3} disabled={busy} className="min-h-24 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:text-sm" />
+        <Label htmlFor="coach-question">Message Tommy</Label>
+        <textarea id="coach-question" placeholder="Ask Tommy about your training…" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} rows={3} disabled={busy} className="min-h-24 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:text-sm" />
         <div className="flex items-center justify-between gap-3"><p className="text-[11px] text-muted-foreground">{question.length}/2000</p><Button type="submit" disabled={!question.trim() || !ready || busy}><Send className="h-4 w-4" />{error && !busy ? "Try again" : "Send"}</Button></div>
       </form>
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">Recent messages are sent to your Mac. This conversation stays in this page&apos;s memory and clears when you leave or reload. No workouts are changed.</p>

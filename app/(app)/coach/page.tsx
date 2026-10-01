@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/header";
 import { CoachWorkspace } from "@/components/coach/coach-workspace";
 
-export const metadata: Metadata = { title: "AI Coach" };
+export const metadata: Metadata = { title: "Tommy · AI Coach" };
 
 export default async function CoachPage() {
   const supabase = await createClient();
@@ -12,5 +12,5 @@ export default async function CoachPage() {
   if (!user) redirect("/login");
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
   if (!profile) redirect("/login");
-  return <div className="flex flex-col"><Header profile={profile} title="AI Coach" /><CoachWorkspace /></div>;
+  return <div className="flex flex-col"><Header profile={profile} title="Tommy · AI Coach" /><CoachWorkspace /></div>;
 }
