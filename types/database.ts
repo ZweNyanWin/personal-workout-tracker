@@ -18,6 +18,15 @@ type CoachingTable<Row, RequiredKeys extends keyof Row> = {
 export type Database = {
   public: {
     Tables: {
+      platform_operators: CoachingTable<{ user_id: string; created_at: string }, "user_id">;
+      coach_organizations: CoachingTable<{
+        id: string; name: string; owner_user_id: string; status: "trial" | "active" | "paused";
+        plan: "free_test"; created_at: string; updated_at: string;
+      }, "name" | "owner_user_id">;
+      coach_memberships: CoachingTable<{
+        user_id: string; organization_id: string; role: "coach" | "client";
+        status: "active" | "disabled"; created_at: string;
+      }, "user_id" | "organization_id" | "role">;
       coaching_drafts: CoachingTable<{
         id: string; member_id: string; coach_id: string; brief: string;
         scope: Json; content: Json | null; revision: number; status: "draft" | "approved";
@@ -63,6 +72,7 @@ export type Database = {
 
       exercises: {
         Row: {
+          organization_id: string | null;
           id: string;
           name: string;
           description: string | null;
@@ -77,6 +87,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          organization_id?: string | null;
           id?: string;
           name: string;
           description?: string | null;
@@ -111,6 +122,7 @@ export type Database = {
 
       programs: {
         Row: {
+          organization_id: string | null;
           client_id: string | null;
           approved_snapshot: Json | null;
           id: string;
@@ -122,6 +134,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          organization_id?: string | null;
           client_id?: string | null;
           approved_snapshot?: Json | null;
           id?: string;
@@ -440,6 +453,7 @@ export type Database = {
 
       workout_log_exercises: {
         Row: {
+          planned_snapshot: Json | null;
           id: string;
           workout_log_id: string;
           exercise_id: string;
@@ -449,6 +463,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          planned_snapshot?: Json | null;
           id?: string;
           workout_log_id: string;
           exercise_id: string;
@@ -604,6 +619,20 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      is_platform_operator: { Args: Record<string, never>; Returns: boolean };
+      current_coach_organization: { Args: Record<string, never>; Returns: string | null };
+      can_coach_member: { Args: { p_member_id: string }; Returns: boolean };
+      can_manage_coaching_program: { Args: { p_program_id: string }; Returns: boolean };
+      can_manage_coach_business: { Args: { p_organization_id: string }; Returns: boolean };
+      coach_ai_access: { Args: Record<string, never>; Returns: boolean };
+      get_coach_business_metrics: { Args: Record<string, never>; Returns: Json };
+      create_coach_business: { Args: { p_name: string; p_coach_email: string }; Returns: string };
+      set_coach_business_status: { Args: { p_organization_id: string; p_status: string }; Returns: undefined };
+      add_coach_business_client: { Args: { p_email: string }; Returns: string };
+      set_coach_member_role: { Args: { p_user_id: string; p_role: string }; Returns: undefined };
+      start_workout_atomically: { Args: { p_session_id: string; p_quick_complete?: boolean }; Returns: string };
+      complete_workout_atomically: { Args: { p_log_id: string; p_sets: Json; p_notes?: string | null; p_bodyweight?: number | null; p_energy?: number | null }; Returns: string };
+      reopen_quick_workout_atomically: { Args: { p_session_id: string }; Returns: string };
       save_coaching_draft: {
         Args: { p_member_id: string; p_brief: string; p_scope: Json; p_content?: Json | null; p_draft_id?: string | null; p_expected_revision?: number | null; p_generation_job_id?: string | null };
         Returns: Database["public"]["Tables"]["coaching_drafts"]["Row"];

@@ -21,6 +21,7 @@ import { CheckCircle2, ChevronRight, Pencil, History } from "lucide-react";
 import type { Metadata } from "next";
 import { MemberRoleControl } from "@/components/admin/member-role-control";
 import { MemberCoachingWorkspace } from "@/components/coaching/coaching-workspace";
+import { getBusinessAccess } from "@/lib/business/access";
 
 export const metadata: Metadata = { title: "Member Detail" };
 export const dynamic = "force-dynamic";
@@ -45,7 +46,12 @@ export default async function MemberDetailPage({
     .eq("id", user.id)
     .single();
 
-  if (!adminProfile || adminProfile.role !== "admin") redirect("/dashboard");
+  const access = await getBusinessAccess(supabase);
+  if (!adminProfile || !access.isCoach) redirect("/dashboard");
+
+  const { data: canManageBusiness } = access.organizationId
+    ? await supabase.rpc("can_manage_coach_business", { p_organization_id: access.organizationId })
+    : { data: false };
 
   const [detail, programs] = await Promise.all([
     getMemberDetail(userId),
@@ -63,7 +69,7 @@ export default async function MemberDetailPage({
 
   return (
     <div className="flex flex-col">
-      <Header profile={adminProfile} title="Member Detail" />
+      <Header profile={adminProfile} title="Member Detail" backHref="/admin/members" backLabel="Back to clients" />
 
       <div className="flex-1 p-4 md:p-6 space-y-5 max-w-4xl mx-auto w-full">
         {/* Member card */}
@@ -90,7 +96,7 @@ export default async function MemberDetailPage({
               </div>
             </div>
           </div>
-          <details className="mt-4 border-t border-border pt-4">
+          {canManageBusiness && member.id !== adminProfile.id && <details className="mt-4 border-t border-border pt-4">
             <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
               Account role
             </summary>
@@ -101,7 +107,7 @@ export default async function MemberDetailPage({
                 isCurrentUser={member.id === adminProfile.id}
               />
             </div>
-          </details>
+          </details>}
         </div>
 
         {/* Current program */}
@@ -188,9 +194,12 @@ export default async function MemberDetailPage({
 
         {/* Recent logs */}
         <div>
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3 px-1">
-            Recent Workouts
-          </h3>
+          <div className="flex items-center justify-between gap-3 mb-3 px-1">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Recent Workouts</h3>
+            <Link href={`/history?memberId=${member.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              View all ({detail.workoutCount})<ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
           {recentLogs.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-6 text-center">
               <p className="text-sm text-muted-foreground">
@@ -199,10 +208,10 @@ export default async function MemberDetailPage({
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-              {recentLogs.slice(0, 20).map((log) => (
+              {recentLogs.map((log) => (
                 <Link
                   key={log.id}
-                  href={`/log/${log.id}`}
+                  href={`/log/${log.id}?${new URLSearchParams({ returnTo: `/admin/members/${member.id}` })}`}
                   className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors tap-none"
                 >
                   <CheckCircle2 className="h-4 w-4 text-success shrink-0" />

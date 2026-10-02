@@ -30,6 +30,7 @@ import {
   type WorkflowProgramDraft,
 } from "@/lib/coach/workflow-schema";
 import { CoachingProgramEditor } from "./program-editor";
+import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
 
 const areaClass =
   "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:text-sm";
@@ -429,16 +430,20 @@ export function MemberCoachingWorkspace({
     setNotice("");
     setProgress(null);
     try {
+      const requestedScope = resolveRequestedScope(brief, scope).scope;
+      const currentScope = selected?.scope ?? scope;
+      const scheduleChanged = content && (requestedScope.startWeek !== currentScope.startWeek || requestedScope.weekCount !== currentScope.weekCount || requestedScope.daysPerWeek !== currentScope.daysPerWeek);
+      setScope(requestedScope);
       // Save edits before asking for a revision; a model failure preserves them.
-      const saved = dirty && content ? await save() : selected;
-      if (dirty && content && !saved) return;
+      const saved = scheduleChanged ? null : dirty && content ? await save() : selected;
+      if (!scheduleChanged && dirty && content && !saved) return;
       const data = await request("/api/coach/program", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           memberId,
           brief,
-          scope,
+          scope: requestedScope,
           mode,
           draftId: saved?.id,
           expectedRevision: saved?.revision,
@@ -882,6 +887,14 @@ export function MemberCoachingWorkspace({
                   <p className="text-[11px] text-muted-foreground">
                     Paste your own prescriptions or describe the block. Tommy
                     must preserve explicit sets, reps, variants, and units.
+                  </p>
+                  <p className="text-xs font-medium text-primary">
+                    {(() => {
+                      try {
+                        const requested = resolveRequestedScope(brief, scope).scope;
+                        return `Tommy will draft ${requested.weekCount} ${requested.weekCount === 1 ? "week" : "weeks"}, ${requested.daysPerWeek} ${requested.daysPerWeek === 1 ? "day" : "days"} per week. Explicit schedule requests in your brief override these form defaults.`;
+                      } catch (failure) { return failure instanceof Error ? failure.message : "Check your requested schedule."; }
+                    })()}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

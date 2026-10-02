@@ -274,7 +274,7 @@ export default function SessionDetailPage() {
       {/* Header */}
       <div className="sticky top-0 z-10 flex h-14 items-center gap-3 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push("/workout")}
           className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors tap-none"
           aria-label="Go back"
           title="Back"

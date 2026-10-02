@@ -7,6 +7,9 @@ export async function proxy(request: NextRequest) {
     [
       "/preview/coach",
       "/preview/coaching",
+      "/preview/history",
+      "/preview/platform",
+      "/preview/logging",
       "/preview/ollama",
       "/api/local-ollama",
     ].includes(request.nextUrl.pathname)

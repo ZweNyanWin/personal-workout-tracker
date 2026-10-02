@@ -166,6 +166,7 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
               set={set}
               planned={planned}
               onUpdate={handleSetUpdate}
+              onDraftChange={handleSetUpdate}
               onDelete={handleSetDelete}
             />
           ))}

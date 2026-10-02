@@ -19,6 +19,7 @@ interface SetRowProps {
   } | null;
   previousBest?: { weight_kg: number | null; reps: number | null } | null;
   onUpdate: (setId: string, data: Partial<WorkoutLogSet>) => void;
+  onDraftChange: (setId: string, data: Partial<WorkoutLogSet>) => void;
   onDelete: (setId: string) => void;
 }
 
@@ -27,6 +28,7 @@ export function SetRow({
   planned,
   previousBest,
   onUpdate,
+  onDraftChange,
   onDelete,
 }: SetRowProps) {
   const [weight, setWeight] = useState(set.weight_kg?.toString() ?? "");
@@ -38,12 +40,16 @@ export function SetRow({
   const prescription = readPrescription(planned?.prescription);
   const isHold = prescription?.dose.kind === "hold" || set.hold_seconds != null;
 
-  function values() {
+  function values(changed: Partial<{ weight: string; reps: string; seconds: string; rpe: string }> = {}) {
+    const currentWeight = changed.weight ?? weight;
+    const currentReps = changed.reps ?? reps;
+    const currentSeconds = changed.seconds ?? seconds;
+    const currentRpe = changed.rpe ?? rpe;
     return {
-      weight_kg: parseFloatOrNull(weight),
-      reps: isHold || !reps.trim() ? null : Number(reps),
-      hold_seconds: isHold && seconds.trim() ? Number(seconds) : null,
-      rpe: isHold ? null : parseFloatOrNull(rpe),
+      weight_kg: parseFloatOrNull(currentWeight),
+      reps: isHold || !currentReps.trim() ? null : Number(currentReps),
+      hold_seconds: isHold && currentSeconds.trim() ? Number(currentSeconds) : null,
+      rpe: isHold ? null : parseFloatOrNull(currentRpe),
     };
   }
 
@@ -88,7 +94,6 @@ export function SetRow({
       }
 
       onUpdate(set.id, {
-        ...data,
         is_completed: newCompleted,
       });
     });
@@ -117,7 +122,8 @@ export function SetRow({
     }
     const result = await updateSet(set.id, data);
     if (!result.success) toast.error(result.error);
-    else onUpdate(set.id, data);
+    // Typing already updated the in-memory completion payload. A stale autosave
+    // response must not replace more recent edits made while the request ran.
   }
 
   function handleDelete() {
@@ -162,7 +168,7 @@ export function SetRow({
         type="number"
         inputMode="decimal"
         value={weight}
-        onChange={(e) => setWeight(e.target.value)}
+        onChange={(e) => { setWeight(e.target.value); onDraftChange(set.id, values({ weight: e.target.value })); }}
         onBlur={handleBlurSave}
         placeholder={
           planned?.target_weight_kg
@@ -186,9 +192,10 @@ export function SetRow({
         type="number"
         inputMode="numeric"
         value={isHold ? seconds : reps}
-        onChange={(e) =>
-          isHold ? setSeconds(e.target.value) : setReps(e.target.value)
-        }
+        onChange={(e) => {
+          if (isHold) setSeconds(e.target.value); else setReps(e.target.value);
+          onDraftChange(set.id, values(isHold ? { seconds: e.target.value } : { reps: e.target.value }));
+        }}
         onBlur={handleBlurSave}
         placeholder={isHold ? "sec" : (planned?.target_reps ?? "reps")}
         min="1"
@@ -206,7 +213,7 @@ export function SetRow({
           type="number"
           inputMode="decimal"
           value={rpe}
-          onChange={(e) => setRpe(e.target.value)}
+          onChange={(e) => { setRpe(e.target.value); onDraftChange(set.id, values({ rpe: e.target.value })); }}
           onBlur={handleBlurSave}
           placeholder="RPE"
           min="5"

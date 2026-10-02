@@ -16,6 +16,10 @@
 /ai/data/private/
 /ai/training/local-state.json
 /ai/training/local-state.json.tmp
+/ai/knowledge/uploaded-programs.json
+/ai/knowledge/uploaded-personal-plans.json
+/ai/knowledge/program-examples.json
+/ai/knowledge/build_uploaded_personal_plans.py
 
 # next.js
 /.next/

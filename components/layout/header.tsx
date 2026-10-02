@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { ArrowLeft, LogOut, ShieldCheck } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
 import { getInitials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,11 +12,14 @@ import type { Profile } from "@/types";
 interface HeaderProps {
   profile: Profile;
   title?: string;
+  backHref?: string;
+  backLabel?: string;
 }
 
-export function Header({ profile, title }: HeaderProps) {
+export function Header({ profile, title, backHref, backLabel = "Back" }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-card/95 backdrop-blur-md px-4 md:px-6 shadow-sm shadow-black/5 dark:shadow-black/15">
+      {backHref && <Button asChild variant="ghost" size="icon-sm"><Link href={backHref} aria-label={backLabel} title={backLabel}><ArrowLeft className="h-4 w-4" /></Link></Button>}
       {/* Title */}
       <div className="flex-1 min-w-0">
         {title && (
@@ -28,7 +31,7 @@ export function Header({ profile, title }: HeaderProps) {
       <div className="flex items-center gap-2">
         {profile.role === "admin" && (
           <Button asChild variant="ghost" size="icon-sm">
-            <Link href="/admin" aria-label="Open admin dashboard" title="Admin dashboard">
+            <Link href="/admin" aria-label="Open coach workspace" title="Coach workspace">
               <ShieldCheck className="h-4 w-4 text-primary" />
             </Link>
           </Button>

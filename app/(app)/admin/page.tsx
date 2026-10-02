@@ -6,7 +6,7 @@ import { Header } from "@/components/layout/header";
 import { Users, BookOpen, Dumbbell, ShieldCheck, ChevronRight } from "lucide-react";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Admin" };
+export const metadata: Metadata = { title: "Coach workspace" };
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
@@ -35,12 +35,12 @@ export default async function AdminPage() {
 
   return (
     <div className="flex flex-col">
-      <Header profile={profile} title="Admin" />
+      <Header profile={profile} title="Coach workspace" />
 
       <div className="flex-1 p-4 md:p-6 space-y-6 max-w-3xl mx-auto w-full">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-bold">Admin Dashboard</h2>
+          <h2 className="text-xl font-bold">Coach Workspace</h2>
         </div>
 
         {/* Stats */}
@@ -60,6 +60,7 @@ export default async function AdminPage() {
             { href: "/admin/members",  icon: Users,    label: "Manage Members",       desc: "View and edit member plans" },
             { href: "/admin/programs", icon: BookOpen,  label: "Programs & Templates", desc: "Build and manage training programs" },
             { href: "/admin/exercises",icon: Dumbbell,  label: "Exercise Library",     desc: "Add or edit exercises" },
+            { href: "/admin/business",icon: Users, label: "My Business", desc: "Add verified clients to your roster" },
           ].map(({ href, icon: Icon, label, desc }) => (
             <Link
               key={href}

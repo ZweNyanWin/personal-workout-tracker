@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { exercisePrescriptionSchema, programDraftSchema } from "./program.ts";
 import { programEffortProblems } from "./effort-validation.mjs";
+import { mainCompoundProblems, exerciseDoseProblems } from "./exercise-rules.mjs";
 
 export const coachingScopeSchema = z.object({
   startWeek: z.number().int().min(1).max(52),
@@ -55,6 +56,10 @@ export function validateWorkflowProgramDraft(value: unknown, requested: Coaching
   const draft = workflowProgramDraftSchema.parse(value);
   const effortIssues = programEffortProblems(draft);
   if (effortIssues.length) throw new Error(effortIssues.join(" "));
+  for (const week of draft.weeks) for (const day of week.days) for (const exercise of day.exercises) {
+    const issues = [...mainCompoundProblems(exercise), ...exerciseDoseProblems(exercise)];
+    if (issues.length) throw new Error(`Week ${week.number}, day ${day.number}, ${exercise.name}: ${issues.join(" ")}`);
+  }
   if (draft.weeks.length !== scope.weekCount) throw new Error("Every requested week must be present exactly once");
   const weeks = new Set(draft.weeks.map((week) => week.number));
   if (weeks.size !== scope.weekCount) throw new Error("Duplicate week numbers");

@@ -15,6 +15,7 @@ import {
   Moon,
   Sun,
   Sparkles,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/theme-provider";
@@ -39,22 +40,24 @@ const MORE_ROUTES = ["/1rm", "/exercises", "/plate-calculator", "/profile"];
 interface BottomNavProps {
   isAdmin?: boolean;
   previewMode?: boolean;
+  isPlatformOwner?: boolean;
 }
 
-export function BottomNav({ isAdmin, previewMode = false }: BottomNavProps) {
+export function BottomNav({ isAdmin, previewMode = false, isPlatformOwner = false }: BottomNavProps) {
   const currentPath = usePathname();
   const pathname = previewMode ? "/coach" : currentPath;
   const { theme, toggleTheme } = useTheme();
   const navItems = BASE_ITEMS;
-  const moreRoutes = ["/analytics", ...(isAdmin ? ["/admin"] : []), ...MORE_ROUTES];
+  const moreRoutes = ["/analytics", ...(isAdmin ? ["/admin"] : []), ...(isPlatformOwner ? ["/platform"] : []), ...MORE_ROUTES];
   const moreActive = moreRoutes.some(
     (href) => pathname === href || pathname.startsWith(`${href}/`)
   );
 
   const moreItems = [
     ...(isAdmin
-      ? [{ href: "/admin", label: "Admin dashboard", icon: ShieldCheck }]
+      ? [{ href: "/admin", label: "Coach workspace", icon: ShieldCheck }]
       : []),
+    ...(isPlatformOwner ? [{ href: "/platform", label: "Coach businesses", icon: Building2 }] : []),
     { href: "/analytics", label: "Analytics", icon: BarChart2 },
     { href: "/exercises", label: "Exercise library", icon: BookOpen },
     { href: "/1rm", label: "1RM predictor", icon: Calculator },

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { saveCoachingDraft } from "@/lib/actions/coaching";
 import { buildClientContext } from "@/lib/coach/context";
+import { loadCoachExerciseCatalog } from "@/lib/coach/exercise-catalog";
+import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
 import { coachingScopeSchema, workflowProgramDraftSchema, validateWorkflowProgramDraft, type CoachingDraftRecord } from "@/lib/coach/workflow-schema";
 import { coachJson, gatewayCall, mutationFromApp, readCoachInput } from "@/lib/coach/gateway-client";
 
@@ -18,8 +20,9 @@ async function verifiedCoach() {
   const supabase = await createClient({ signal: AbortSignal.timeout(20000) });
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  return profile?.role === "admin" ? { supabase, user } : null;
+  const { data: canCoach, error: accessError } = await supabase.rpc("is_admin");
+  const { data: aiEnabled, error: aiError } = await supabase.rpc("coach_ai_access");
+  return !accessError && !aiError && canCoach === true && aiEnabled === true ? { supabase, user } : null;
 }
 
 export async function POST(request: Request) {
@@ -33,26 +36,36 @@ export async function POST(request: Request) {
     if (!request.headers.get("content-type")?.startsWith("application/json")) return coachJson({ error: "Send a JSON brief." }, 415);
     const parsed = input.safeParse(await readCoachInput(request, 30000));
     if (!parsed.success) return coachJson({ error: "Add a brief of 10–6,000 characters and a valid week/day scope." }, 400);
-    const { memberId, brief, scope, draftId, expectedRevision, mode } = parsed.data;
+    const { memberId, brief, draftId, expectedRevision, mode } = parsed.data;
+    const scope = coachingScopeSchema.parse(resolveRequestedScope(brief, parsed.data.scope).scope);
     const { data: member } = await coach.supabase.from("profiles").select("id").eq("id", memberId).single();
     if (!member) return coachJson({ error: "Client not found." }, 404);
     let previousContent;
+    let continuingDraftId = draftId;
     if (draftId) {
       const { data: previous } = await coach.supabase.from("coaching_drafts").select("*").eq("id", draftId).eq("coach_id", coach.user.id).eq("member_id", memberId).single();
       if (!previous || previous.status !== "draft" || previous.revision !== expectedRevision) return coachJson({ error: "This draft changed. Reload and review it before generating again." }, 409);
       // Preserve an existing reviewable draft if generation fails; never erase it on dispatch.
-      if (previous.content) previousContent = workflowProgramDraftSchema.parse(previous.content);
+      const previousScope = coachingScopeSchema.parse(previous.scope);
+      if (previousScope.startWeek !== scope.startWeek || previousScope.weekCount !== scope.weekCount || previousScope.daysPerWeek !== scope.daysPerWeek) {
+        // A new schedule is a separate draft; a failed smaller-scope request
+        // must not erase or invalidate the existing saved program.
+        continuingDraftId = undefined;
+      } else if (previous.content) previousContent = workflowProgramDraftSchema.parse(previous.content);
     }
-    const saved = await saveCoachingDraft({ memberId, brief, scope, ...(draftId ? { draftId, expectedRevision } : {}), ...(previousContent ? { content: previousContent } : {}) });
+    const saved = await saveCoachingDraft({ memberId, brief, scope, ...(continuingDraftId ? { draftId: continuingDraftId, expectedRevision } : {}), ...(previousContent ? { content: previousContent } : {}) });
     if (!saved.success) return coachJson({ error: saved.error || "Could not save this brief." }, 409);
     const draft = saved.data;
     persistedDraft = draft;
-    const context = await buildClientContext(memberId, coach.supabase);
-    const contextText = `${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
+    const [context, exerciseCatalog] = await Promise.all([
+      buildClientContext(memberId, coach.supabase),
+      loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief),
+    ]);
+    const contextText = `${exerciseCatalog.context}\n${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
     coachId = coach.user.id;
     const result = await gatewayCall("/v1/jobs", "POST", { userId: coachId,
       messages: [{ role: "user", content: "Create a complete program draft for the coach to review." }],
-      context: contextText, program: { brief, scope, ...(previousContent ? { sourceWeeks: previousContent.weeks } : {}) },
+      context: contextText, program: { brief, scope, exerciseCatalog: exerciseCatalog.entries, ...(previousContent ? { sourceWeeks: previousContent.weeks } : {}) },
     }, request.signal);
     acceptedJob = uuid.parse(result.jobId);
     const { data: attached, error: attachmentError } = await coach.supabase.rpc("set_coaching_generation", {

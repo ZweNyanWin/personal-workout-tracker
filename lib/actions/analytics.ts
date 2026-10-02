@@ -12,12 +12,8 @@ export async function getAnalyticsData(userId?: string) {
 
   // If viewing another user's data, must be admin
   if (userId && userId !== user.id) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    if (profile?.role !== "admin") return null;
+    const { data: allowed, error } = await supabase.rpc("can_coach_member", { p_member_id: targetId });
+    if (error || allowed !== true) return null;
   }
 
   const [bodyMetrics, prs, recentLogs] = await Promise.all([

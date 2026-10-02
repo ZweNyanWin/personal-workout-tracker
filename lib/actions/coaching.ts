@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireBusinessCoach } from "@/lib/business/access";
 import { coachingScopeSchema, workflowProgramDraftSchema, validateWorkflowProgramDraft, type CoachingDraftRecord, type CoachingProfile, type CoachingReviewRequest } from "@/lib/coach/workflow-schema";
 import type { ActionResult } from "@/types";
 import type { Json, Tables } from "@/types/database";
@@ -15,12 +16,7 @@ const profileSchema = z.object({
 }).strict();
 
 async function authenticatedAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Sign in to manage coaching");
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin") throw new Error("Only a coach can manage program drafts");
-  return { supabase, user };
+  return requireBusinessCoach();
 }
 
 function errorMessage(error: unknown): string {
