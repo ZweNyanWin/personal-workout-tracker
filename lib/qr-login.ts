@@ -1,8 +1,6 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
-export const QR_LOGIN_TTL_MS = 5 * 60_000;
-
 export function generateSecret() {
   return randomBytes(32).toString("base64url");
 }

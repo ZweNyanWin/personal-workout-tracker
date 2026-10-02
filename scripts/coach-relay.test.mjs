@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCoachHandler, coachRequestSchema, validGatewayConfig } from "../lib/coach/relay.ts";
+import { CoachQuotaError, createCoachHandler, coachRequestSchema, validGatewayConfig } from "../lib/coach/relay.ts";
 import { withDeadline } from "../lib/async/deadline.ts";
 import { COACH_AUTH_TIMEOUT_MS, COACH_GATEWAY_TIMEOUT_MS, COACH_CLIENT_TIMEOUT_MS } from "../lib/coach/timeouts.ts";
 
@@ -38,6 +38,20 @@ test("database context failure blocks generation and failed request persistence 
   assert.equal(response.status, 503);
   assert.equal(rejected.calls.at(-1).init.method, "DELETE");
   assert.equal((await response.text()).includes("private database detail"), false);
+});
+
+test("known persistence quotas return safe 429 text and cancel the accepted job", async () => {
+  for (const kind of ["history", "rate"]) {
+    const blocked = fixture(Response.json({ jobId, status: "running" }), {
+      accepted: async () => { throw new CoachQuotaError(kind); },
+    });
+    const response = await blocked.handle(request("POST"));
+    assert.equal(response.status, 429);
+    assert.equal(blocked.calls.at(-1).init.method, "DELETE");
+    const body = await response.json();
+    assert.match(body.error, kind === "history" ? /archive or export/ : /Try again later/);
+    assert.equal(JSON.stringify(body).includes(config.token), false);
+  }
 });
 
 function request(method = "GET", query = "", body = question, origin = app) {

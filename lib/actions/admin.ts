@@ -510,11 +510,16 @@ export async function createExercise(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
+  const { data: profile, error: profileError } = await supabase.from("profiles")
+    .select("role").eq("id", user.id).single();
+  if (profileError || !profile) return { success: false, error: "Could not verify exercise permissions" };
+
   const { data, error } = await supabase
     .from("exercises")
     .insert({
       ...payload,
       created_by: user.id,
+      is_public: profile.role === "admin",
       primary_lift: payload.primary_lift || null,
     })
     .select("id")
