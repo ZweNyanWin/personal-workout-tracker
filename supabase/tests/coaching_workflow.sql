@@ -1,4 +1,4 @@
--- Run only against a fresh disposable database with migrations 001,002,003,005,006,007.
+-- Run only against a fresh disposable database with migrations 001 through 010.
 -- Synthetic fixtures; never run this test against production.
 INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES
  ('00000000-0000-4000-8000-000000000001','coach@example.invalid','{}'),
@@ -12,6 +12,9 @@ END $$;
 CREATE TRIGGER fixture_fail_assignment BEFORE INSERT ON user_program_assignments FOR EACH ROW EXECUTE FUNCTION fixture_fail_assignment_insert();
 GRANT USAGE ON SCHEMA public,auth TO authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+REVOKE INSERT,UPDATE,DELETE ON coach_chat_turns FROM authenticated;
+REVOKE INSERT,DELETE ON coaching_review_requests FROM authenticated;
+REVOKE ALL ON qr_login_requests,qr_login_rate_events FROM authenticated;
 CREATE TEMP TABLE fixture_ids(draft_id uuid,assignment_id uuid,program_id uuid,job_id uuid);
 GRANT ALL ON fixture_ids TO authenticated;
 SET ROLE authenticated;
@@ -22,6 +25,9 @@ DECLARE content jsonb := '{"title":"Exact synthetic block","status":"proposed","
  scope jsonb := '{"startWeek":5,"weekCount":1,"daysPerWeek":1}';
  draft coaching_drafts; result jsonb; repeated jsonb; failing jsonb; g uuid := gen_random_uuid(); before_count integer;
 BEGIN
+ content:=jsonb_set(content,'{weeks,0,days,0,exercises,0,effort}','"RPE 8"');
+ content:=jsonb_set(content,'{weeks,0,days,0,exercises,0,restSeconds}','300');
+ content:=jsonb_set(content,'{weeks,0,days,0,exercises,0,restRangeMinutes}','{"min":4,"max":6}');
  draft:=save_coaching_draft('00000000-0000-4000-8000-000000000002','Synthetic brief',scope,content);
  BEGIN
    PERFORM save_coaching_draft(draft.member_id,'Changed',scope,content,draft.id,99);
@@ -42,6 +48,7 @@ BEGIN
  IF (SELECT count(*) FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid)<>3 THEN RAISE EXCEPTION 'TEST FAILED: top/backdown groups lost'; END IF;
  IF NOT EXISTS(SELECT 1 FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid AND target_reps='8–12 seconds' AND prescription->>'name'='Tuck Front Lever') THEN RAISE EXCEPTION 'TEST FAILED: hold seconds lost'; END IF;
  IF NOT EXISTS(SELECT 1 FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid AND prescription->>'loadOrAssistance'='100 lb') THEN RAISE EXCEPTION 'TEST FAILED: original load unit lost'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid AND rest_seconds=300 AND prescription->'restRangeMinutes'='{"min":4,"max":6}'::jsonb) THEN RAISE EXCEPTION 'TEST FAILED: suggested rest range or timer lost'; END IF;
  INSERT INTO fixture_ids VALUES(draft.id,(result->>'assignmentId')::uuid,(result->>'programId')::uuid,g);
  BEGIN
    UPDATE programs SET title='Changed' WHERE id=(result->>'programId')::uuid;
@@ -97,14 +104,11 @@ DO $$ BEGIN
    PERFORM approve_coaching_draft((SELECT draft_id FROM fixture_ids),2);
    RAISE EXCEPTION 'TEST FAILED: member can approve';
  EXCEPTION WHEN OTHERS THEN IF SQLERRM LIKE 'TEST FAILED:%' THEN RAISE; END IF; END;
- BEGIN
-   PERFORM save_coach_chat_turn(gen_random_uuid(),'Q','A',(SELECT assignment_id FROM fixture_ids));
-   RAISE EXCEPTION 'TEST FAILED: another assignment added to chat';
- EXCEPTION WHEN OTHERS THEN IF SQLERRM LIKE 'TEST FAILED:%' THEN RAISE; END IF; END;
+ IF has_function_privilege('authenticated','save_coach_chat_turn(uuid,text,text,uuid)','EXECUTE') THEN RAISE EXCEPTION 'TEST FAILED: client chat-write RPC remains callable'; END IF;
 END $$;
 
 SELECT set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000002',false);
-DO $$ DECLARE a uuid; s uuid; turn uuid; log_id uuid; log_ex_id uuid; BEGIN
+DO $$ DECLARE a uuid; s uuid; log_id uuid; log_ex_id uuid; BEGIN
  SELECT assignment_id INTO a FROM fixture_ids;
  IF (SELECT count(*) FROM programs WHERE client_id=auth.uid())<>1 THEN RAISE EXCEPTION 'TEST FAILED: own program not visible'; END IF;
  IF (SELECT count(*) FROM session_exercises)<>3 THEN RAISE EXCEPTION 'TEST FAILED: own prescriptions missing'; END IF;
@@ -126,8 +130,7 @@ DO $$ DECLARE a uuid; s uuid; turn uuid; log_id uuid; log_ex_id uuid; BEGIN
  EXCEPTION WHEN OTHERS THEN IF SQLERRM LIKE 'TEST FAILED:%' THEN RAISE; END IF; END;
  UPDATE user_program_assignments SET current_session_index=0 WHERE id=a;
  IF (SELECT status FROM user_program_assignments WHERE id=a)<>'active' THEN RAISE EXCEPTION 'TEST FAILED: quick completion cannot reopen'; END IF;
- turn:=save_coach_chat_turn(gen_random_uuid(),'Synthetic question','Synthetic answer',a);
- IF NOT EXISTS(SELECT 1 FROM coach_chat_turns WHERE id=turn) THEN RAISE EXCEPTION 'TEST FAILED: own chat not visible'; END IF;
+ IF has_table_privilege('authenticated','coach_chat_turns','INSERT') OR has_table_privilege('authenticated','coach_chat_turns','UPDATE') THEN RAISE EXCEPTION 'TEST FAILED: client can forge chat history'; END IF;
  PERFORM create_coaching_review_request('Please review my next block');
  IF (SELECT count(*) FROM coaching_review_requests WHERE member_id=auth.uid())<>1 THEN RAISE EXCEPTION 'TEST FAILED: review not saved'; END IF;
  INSERT INTO workout_logs(user_id,title,status) VALUES(auth.uid(),'Synthetic timed hold','in_progress') RETURNING id INTO log_id;

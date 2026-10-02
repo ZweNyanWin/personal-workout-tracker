@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { createCoachHandler } from "@/lib/coach/relay";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { CoachQuotaError, createCoachHandler } from "@/lib/coach/relay";
 import { buildClientContext } from "@/lib/coach/context";
 
 export const runtime = "nodejs";
@@ -27,12 +28,16 @@ const handle = createCoachHandler({
     return { text: context.text, assignmentId: context.summary.assignmentId };
   },
   accepted: async (userId, jobId, question, assignmentId) => {
-    const supabase = await createClient();
+    // userId comes from the authenticated session in createCoachHandler, never
+    // from the browser's request body. Client roles cannot write chat history.
+    const supabase = createAdminClient();
     const { error } = await supabase.from("coach_chat_turns").insert({ user_id: userId, job_id: jobId, question, assignment_id: assignmentId });
+    if (error?.message.startsWith("Saved coach history is full (500 turns).")) throw new CoachQuotaError("history");
+    if (error?.message.startsWith("Too many coach messages.")) throw new CoachQuotaError("rate");
     if (error) throw new Error("Chat could not be saved");
   },
   completed: async (userId, jobId, answer) => {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase.from("coach_chat_turns").update({ answer })
       .eq("user_id", userId).eq("job_id", jobId).is("answer", null).select("id");
     if (error) throw new Error("Chat could not be saved");

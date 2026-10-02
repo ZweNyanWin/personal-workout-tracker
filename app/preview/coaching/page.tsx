@@ -14,6 +14,11 @@ export default function CoachingWorkflowPreview() {
   if (process.env.NODE_ENV !== "development") notFound();
   const content = createExampleBlock(4, 3, "gym");
   content.title = "Technique block · authored preview";
+  // Synthetic layout case for Tommy's optional high-effort rest suggestion.
+  const restExample = content.weeks[0].days[0].exercises[0];
+  restExample.effort = "RPE 8";
+  restExample.restSeconds = 300;
+  restExample.restRangeMinutes = { min: 4, max: 6 };
   const draft: CoachingDraftRecord = {
     id: "preview-draft",
     member_id: "preview",

@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { workflowProgramDraftSchema } from "@/lib/coach/workflow-schema";
 import { requestedProgramWeeks } from "@/lib/coach/week-selection";
+import { formatRestMinutes, restMinutes } from "@/lib/rest-minutes";
 
 type ClientContextSummary = {
   programTitle: string | null; assignmentId: string | null;
@@ -69,7 +70,7 @@ export async function buildClientContext(
         const weekText = `WEEK ${week.number}: ${week.focus}\n` + week.days.map((day) =>
           `DAY ${day.number}: ${day.title}. Warmup: ${day.warmup}\n` + day.exercises.map((exercise) => {
             const dose = exercise.dose.kind === "hold" ? `${exercise.dose.seconds.min}–${exercise.dose.seconds.max} seconds` : `${exercise.dose.range.min}–${exercise.dose.range.max} reps${exercise.dose.perSide ? " per side" : ""}`;
-            return `${exercise.name}: ${exercise.sets} sets × ${dose}; load/assistance=${exercise.loadOrAssistance}; effort=${exercise.effort}; rest=${exercise.restSeconds} seconds${exercise.notes ? `; notes=${exercise.notes}` : ""}`;
+            return `${exercise.name}: ${exercise.sets} sets × ${dose}; load/assistance=${exercise.loadOrAssistance}; effort=${exercise.effort}; rest=${formatRestMinutes(exercise.restSeconds, exercise.restRangeMinutes)}${exercise.notes ? `; notes=${exercise.notes}` : ""}`;
           }).join("\n")
         ).join("\n");
         if (parts.join("\n\n").length + weekText.length <= 9400) {
@@ -83,7 +84,16 @@ export async function buildClientContext(
       if (error) throw new Error("Assigned program details could not be loaded");
       const position = sessions?.length ? (assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % sessions.length) : -1;
       const current = sessions?.[position];
-      if (current) parts.push("CURRENT SESSION TARGETS:\n" + JSON.stringify(current).slice(0, 3800) + "\nAny omitted fields or sessions are unavailable; do not fill them in.");
+      if (current) {
+        const currentTargets = {
+          ...current,
+          exercises: current.exercises.map(({ rest_seconds, ...exercise }) => ({
+            ...exercise,
+            rest_minutes: rest_seconds == null ? null : restMinutes(rest_seconds),
+          })),
+        };
+        parts.push("CURRENT SESSION TARGETS:\n" + JSON.stringify(currentTargets).slice(0, 3800) + "\nAny omitted fields or sessions are unavailable; do not fill them in.");
+      }
       else parts.push("There is no upcoming session in this completed or empty block.");
     }
   } else parts.push("APPROVED PROGRAM: None assigned. Do not invent a plan or previous prescriptions.");

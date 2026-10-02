@@ -23,6 +23,17 @@ test("approved drafts retain exact variants, separate dose groups, units and hol
   assert.equal(result.weeks[0].days[0].exercises[2].dose.kind, "hold");
 });
 
+test("suggested rest range survives approval and must keep its timer default", () => {
+  const draft = structuredClone(base);
+  const exercise = draft.weeks[0].days[0].exercises[0];
+  exercise.effort = "RPE 8"; exercise.restSeconds = 300; exercise.restRangeMinutes = { min: 4, max: 6 };
+  assert.deepEqual(validateWorkflowProgramDraft(draft, scope).weeks[0].days[0].exercises[0].restRangeMinutes, { min: 4, max: 6 });
+  exercise.restSeconds = 180;
+  assert.throws(() => validateWorkflowProgramDraft(draft, scope));
+  exercise.restSeconds = 300; exercise.effort = "RPE 7.5";
+  assert.throws(() => validateWorkflowProgramDraft(draft, scope));
+});
+
 test("approval rejects extra or missing requested calendar coverage and incomplete prescriptions", () => {
   for (const edit of [
     (draft) => { draft.weeks[0].number = 1; },

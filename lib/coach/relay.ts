@@ -20,6 +20,16 @@ export const coachRequestSchema = z.object({
 });
 
 type RelayConfig = { url?: string; token?: string; appUrl?: string; development?: boolean };
+
+/** Safe, fixed wording for quota failures raised while persisting a new turn. */
+export class CoachQuotaError extends Error {
+  constructor(kind: "history" | "rate") {
+    super(kind === "history"
+      ? "Your saved coach history is full (500 turns). Contact your coach to archive or export older messages before sending more."
+      : "Too many coach messages. Try again later.");
+  }
+}
+
 type Dependencies = {
   authenticate: (request: Request, signal: AbortSignal) => Promise<{ id: string } | null>;
   config: () => RelayConfig;
@@ -152,11 +162,12 @@ export function createCoachHandler(dependencies: Dependencies) {
         const job = acceptedJob.parse(value);
         if (dependencies.accepted) {
           try { await dependencies.accepted(user.id, job.jobId, messages!.at(-1)!.content, records?.assignmentId ?? null); }
-          catch {
+          catch (error) {
             await network(`${gateway.origin}/v1/jobs/${job.jobId}?userId=${encodeURIComponent(user.id)}`, {
               method: "DELETE", redirect: "error", headers: { Authorization: `Bearer ${gateway.token}` },
               signal: AbortSignal.timeout(COACH_GATEWAY_TIMEOUT_MS),
             }).catch(() => {});
+            if (error instanceof CoachQuotaError) return json({ error: error.message }, 429);
             return json({ error: "Could not save the conversation request. Your question is kept; please retry." }, 503);
           }
         }

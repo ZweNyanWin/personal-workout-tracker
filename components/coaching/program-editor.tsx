@@ -5,6 +5,7 @@ import { Copy, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { restMinutes, restSeconds } from "@/lib/rest-minutes";
 import type { WorkflowProgramDraft } from "@/lib/coach/workflow-schema";
 
 type Exercise =
@@ -89,6 +90,50 @@ function NumberField({
         }
         disabled={disabled}
       />
+    </div>
+  );
+}
+
+function RestMinutesField({
+  seconds,
+  suggestedRange,
+  onChange,
+  disabled,
+}: {
+  seconds: number;
+  suggestedRange?: { min: number; max: number };
+  onChange: (seconds: number) => void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? (seconds > 0 ? String(restMinutes(seconds)) : "");
+
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium">
+        Rest · minutes
+      </label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="decimal"
+        min={0.25}
+        max={10}
+        step={0.01}
+        value={value}
+        onBlur={() => setDraft(null)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const minutes = Number(next);
+          onChange(
+            next !== "" && Number.isFinite(minutes) ? restSeconds(minutes) : 0,
+          );
+        }}
+        disabled={disabled}
+      />
+      {suggestedRange && <p className="text-xs text-muted-foreground">Suggested rest: 4–6 min · timer starts at 5 min. Editing this value sets your exact rest.</p>}
     </div>
   );
 }
@@ -233,17 +278,15 @@ function ExerciseEditor({
         <TextField
           label="Effort · RPE / RIR / hold quality"
           value={exercise.effort}
-          onChange={(effort) => update({ effort })}
+          onChange={(effort) => update({ effort, restRangeMinutes: undefined })}
           disabled={disabled}
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-        <NumberField
-          label="Rest · seconds"
-          value={exercise.restSeconds}
-          min={15}
-          max={600}
-          onChange={(restSeconds) => update({ restSeconds })}
+        <RestMinutesField
+          seconds={exercise.restSeconds}
+          suggestedRange={exercise.restRangeMinutes}
+          onChange={(restSeconds) => update({ restSeconds, restRangeMinutes: undefined })}
           disabled={disabled}
         />
         <TextField
