@@ -134,7 +134,7 @@ test("rejects non-JSON, malformed JSON and oversized wire bodies", async (t) => 
   const { call, calls } = await setup(t);
   assert.equal((await call("/v1/jobs", { method: "POST", body: "{}", headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "text/plain" } })).status, 415);
   assert.equal((await call("/v1/jobs", { method: "POST", body: "{bad" })).status, 400);
-  assert.equal((await call("/v1/jobs", { method: "POST", body: "x".repeat(65001) })).status, 413);
+  assert.equal((await call("/v1/jobs", { method: "POST", body: "x".repeat(512001) })).status, 413);
   assert.equal(calls.length, 0);
 });
 

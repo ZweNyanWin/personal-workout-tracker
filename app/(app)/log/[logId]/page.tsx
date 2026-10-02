@@ -3,7 +3,14 @@
 import { useState, useTransition, use, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, X, Clock, ArrowLeft, Dumbbell } from "lucide-react";
+import {
+  CheckCircle2,
+  X,
+  Clock,
+  ArrowLeft,
+  Dumbbell,
+  MessageCircle,
+} from "lucide-react";
 import { finishWorkout, getWorkoutLog } from "@/lib/actions/workout";
 import { useWorkoutTimer } from "@/lib/hooks/use-workout-timer";
 import { ExerciseCard } from "@/components/logging/exercise-card";
@@ -13,11 +20,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { SESSION_BG_COLORS, formatWeight, formatMinutes, relativeDate } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  SESSION_BG_COLORS,
+  formatWeight,
+  formatMinutes,
+  relativeDate,
+} from "@/lib/utils";
 import type { WorkoutLogFull, WorkoutLogSet } from "@/types";
 
-export default function WorkoutLogPage({ params }: { params: Promise<{ logId: string }> }) {
+export default function WorkoutLogPage({
+  params,
+}: {
+  params: Promise<{ logId: string }>;
+}) {
   const { logId } = use(params);
   const router = useRouter();
   const [log, setLog] = useState<WorkoutLogFull | null>(null);
@@ -42,7 +64,9 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [logId]);
 
   function handleSetsChange(exerciseId: string, sets: WorkoutLogSet[]) {
@@ -50,7 +74,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
     setLog({
       ...log,
       exercises: log.exercises.map((ex) =>
-        ex.id === exerciseId ? { ...ex, sets } : ex
+        ex.id === exerciseId ? { ...ex, sets } : ex,
       ),
     });
   }
@@ -60,7 +84,9 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
     const parsedBodyweight = bodyweight.trim() ? Number(bodyweight) : undefined;
     if (
       parsedBodyweight !== undefined &&
-      (!Number.isFinite(parsedBodyweight) || parsedBodyweight < 30 || parsedBodyweight > 300)
+      (!Number.isFinite(parsedBodyweight) ||
+        parsedBodyweight < 30 ||
+        parsedBodyweight > 300)
     ) {
       toast.error("Bodyweight must be between 30 and 300 kg");
       return;
@@ -71,7 +97,7 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
         logId,
         notes,
         parsedBodyweight,
-        energyRating ?? undefined
+        energyRating ?? undefined,
       );
       if (result.success) {
         toast.success("Workout completed");
@@ -85,7 +111,9 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
+        <div className="animate-pulse text-muted-foreground text-sm">
+          Loading…
+        </div>
       </div>
     );
   }
@@ -94,13 +122,17 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <p className="text-muted-foreground">Workout not found.</p>
-        <Button onClick={() => router.push("/history")} variant="outline">Back to History</Button>
+        <Button onClick={() => router.push("/history")} variant="outline">
+          Back to History
+        </Button>
       </div>
     );
   }
 
   const sessionTitle = log.session?.title ?? log.title ?? "Workout";
-  const colorClass = SESSION_BG_COLORS[sessionTitle ?? ""] ?? "bg-primary/20 text-primary border-primary/30";
+  const colorClass =
+    SESSION_BG_COLORS[sessionTitle ?? ""] ??
+    "bg-primary/20 text-primary border-primary/30";
 
   // ─── Read-only view for completed workouts ────────────────────
   if (log.status === "completed") {
@@ -109,12 +141,15 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
         acc +
         (ex.sets ?? []).reduce(
           (s, set) =>
-            set.is_completed && set.weight_kg && set.reps
+            set.is_completed &&
+            set.hold_seconds === null &&
+            set.weight_kg &&
+            set.reps
               ? s + set.weight_kg * set.reps
               : s,
-          0
+          0,
         ),
-      0
+      0,
     );
 
     return (
@@ -129,8 +164,15 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <Badge className={colorClass} variant="outline">{sessionTitle}</Badge>
-              <Badge variant="secondary" className="text-[10px] text-success border-success/30">Done</Badge>
+              <Badge className={colorClass} variant="outline">
+                {sessionTitle}
+              </Badge>
+              <Badge
+                variant="secondary"
+                className="text-[10px] text-success border-success/30"
+              >
+                Done
+              </Badge>
             </div>
           </div>
         </div>
@@ -139,44 +181,74 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
           {/* Summary stats */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl border border-border bg-card p-3 text-center">
-              <p className="text-lg font-bold font-num">{relativeDate(log.date)}</p>
+              <p className="text-lg font-bold font-num">
+                {relativeDate(log.date)}
+              </p>
               <p className="text-xs text-muted-foreground mt-0.5">Date</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-3 text-center">
               <p className="text-lg font-bold font-num">
-                {log.duration_minutes ? formatMinutes(log.duration_minutes) : "—"}
+                {log.duration_minutes
+                  ? formatMinutes(log.duration_minutes)
+                  : "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">Duration</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-3 text-center">
               <p className="text-lg font-bold font-num">
-                {totalVolume > 0 ? `${Math.round(totalVolume).toLocaleString()}` : "—"}
+                {totalVolume > 0
+                  ? `${Math.round(totalVolume).toLocaleString()}`
+                  : "—"}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">Vol (kg)</p>
             </div>
           </div>
 
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => router.push("/coach")}
+          >
+            <MessageCircle className="h-4 w-4" />
+            Review this session with Tommy
+          </Button>
+
           {/* Exercises */}
           {log.exercises.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-8 text-center">
               <Dumbbell className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm">No exercises logged for this session.</p>
+              <p className="text-muted-foreground text-sm">
+                No exercises logged for this session.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               {log.exercises.map((ex) => {
-                const completedSetsList = (ex.sets ?? []).filter((s) => s.is_completed);
+                const completedSetsList = (ex.sets ?? []).filter(
+                  (s) => s.is_completed,
+                );
                 return (
-                  <div key={ex.id} className="rounded-xl border border-border bg-card p-4">
-                    <p className="text-sm font-semibold mb-3">{ex.exercise?.name ?? "Exercise"}</p>
+                  <div
+                    key={ex.id}
+                    className="rounded-xl border border-border bg-card p-4"
+                  >
+                    <p className="text-sm font-semibold mb-3">
+                      {ex.exercise?.name ?? "Exercise"}
+                    </p>
                     {completedSetsList.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No sets completed</p>
+                      <p className="text-xs text-muted-foreground">
+                        No sets completed
+                      </p>
                     ) : (
                       <div className="space-y-1.5">
                         <div className="grid grid-cols-4 text-[10px] text-muted-foreground uppercase tracking-wide px-1">
                           <span>Set</span>
                           <span>Weight</span>
-                          <span>Reps</span>
+                          <span>
+                            {ex.sets.some((set) => set.hold_seconds != null)
+                              ? "Dose"
+                              : "Reps"}
+                          </span>
                           <span>RPE</span>
                         </div>
                         {(ex.sets ?? []).map((set, i) => (
@@ -186,9 +258,19 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
                               set.is_completed ? "" : "opacity-40"
                             }`}
                           >
-                            <span className="text-muted-foreground">{i + 1}</span>
-                            <span>{set.weight_kg != null ? formatWeight(set.weight_kg) : "—"}</span>
-                            <span>{set.reps ?? "—"}</span>
+                            <span className="text-muted-foreground">
+                              {i + 1}
+                            </span>
+                            <span>
+                              {set.weight_kg != null
+                                ? formatWeight(set.weight_kg)
+                                : "—"}
+                            </span>
+                            <span>
+                              {set.hold_seconds != null
+                                ? `${set.hold_seconds}s`
+                                : (set.reps ?? "—")}
+                            </span>
                             <span>{set.rpe ?? "—"}</span>
                           </div>
                         ))}
@@ -205,15 +287,23 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
               {log.energy_rating && (
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Energy</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Energy
+                  </p>
                   <p className="text-sm">
-                    {["Drained", "Low", "OK", "Good", "Great"][log.energy_rating - 1]}
+                    {
+                      ["Drained", "Low", "OK", "Good", "Great"][
+                        log.energy_rating - 1
+                      ]
+                    }
                   </p>
                 </div>
               )}
               {log.notes && (
                 <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    Notes
+                  </p>
                   <p className="text-sm">{log.notes}</p>
                 </div>
               )}
@@ -225,11 +315,12 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
   }
 
   // ─── Active workout view ───────────────────────────────────────
-  const completedExercises = log.exercises.filter((ex) =>
-    ex.sets.length > 0 && ex.sets.every((s) => s.is_completed)
+  const completedExercises = log.exercises.filter(
+    (ex) => ex.sets.length > 0 && ex.sets.every((s) => s.is_completed),
   ).length;
   const totalExercises = log.exercises.length;
-  const progressPct = totalExercises > 0 ? (completedExercises / totalExercises) * 100 : 0;
+  const progressPct =
+    totalExercises > 0 ? (completedExercises / totalExercises) * 100 : 0;
 
   return (
     <div className="flex flex-col min-h-screen pb-32">
@@ -320,7 +411,9 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setEnergyRating(energyRating === value ? null : value)}
+                    onClick={() =>
+                      setEnergyRating(energyRating === value ? null : value)
+                    }
                     aria-pressed={energyRating === value}
                     className={`flex-1 flex flex-col items-center gap-0.5 rounded-lg border py-2 text-xs transition-colors tap-none ${
                       energyRating === value
@@ -363,7 +456,11 @@ export default function WorkoutLogPage({ params }: { params: Promise<{ logId: st
             </div>
           </div>
           <DialogFooter className="flex-row gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => setFinishOpen(false)}>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setFinishOpen(false)}
+            >
               Cancel
             </Button>
             <Button

@@ -8,9 +8,34 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+type CoachingTable<Row, RequiredKeys extends keyof Row> = {
+  Row: Row;
+  Insert: Pick<Row, RequiredKeys> & Partial<Row>;
+  Update: Partial<Row>;
+  Relationships: [];
+};
+
 export type Database = {
   public: {
     Tables: {
+      coaching_drafts: CoachingTable<{
+        id: string; member_id: string; coach_id: string; brief: string;
+        scope: Json; content: Json | null; revision: number; status: "draft" | "approved";
+        generation_job_id: string | null; generation_revision: number | null; assignment_id: string | null;
+        created_at: string; updated_at: string;
+      }, "member_id" | "coach_id" | "brief" | "scope">;
+      coaching_profiles: CoachingTable<{
+        member_id: string; training_context: string; coach_rules: string; nutrition_targets: string;
+        updated_by: string; updated_at: string;
+      }, "member_id" | "updated_by">;
+      coach_chat_turns: CoachingTable<{
+        id: string; user_id: string; job_id: string; question: string; answer: string | null;
+        assignment_id: string | null; created_at: string;
+      }, "user_id" | "job_id" | "question">;
+      coaching_review_requests: CoachingTable<{
+        id: string; member_id: string; assignment_id: string | null; message: string;
+        status: "open" | "resolved"; created_at: string; resolved_at: string | null;
+      }, "member_id" | "message">;
       profiles: {
         Row: {
           id: string;
@@ -48,6 +73,7 @@ export type Database = {
           primary_lift: "bench" | "squat" | "deadlift" | null;
           created_by: string | null;
           is_public: boolean;
+          coaching_client_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -61,6 +87,7 @@ export type Database = {
           primary_lift?: "bench" | "squat" | "deadlift" | null;
           created_by?: string | null;
           is_public?: boolean;
+          coaching_client_id?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["exercises"]["Insert"]>;
@@ -71,12 +98,21 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exercises_coaching_client_id_fkey";
+            columns: ["coaching_client_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           }
         ];
       };
 
       programs: {
         Row: {
+          client_id: string | null;
+          approved_snapshot: Json | null;
           id: string;
           title: string;
           description: string | null;
@@ -86,6 +122,8 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          client_id?: string | null;
+          approved_snapshot?: Json | null;
           id?: string;
           title: string;
           description?: string | null;
@@ -177,6 +215,7 @@ export type Database = {
 
       session_exercises: {
         Row: {
+          prescription: Json | null;
           id: string;
           session_id: string;
           exercise_id: string;
@@ -192,6 +231,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          prescription?: Json | null;
           id?: string;
           session_id: string;
           exercise_id: string;
@@ -227,6 +267,9 @@ export type Database = {
 
       user_program_assignments: {
         Row: {
+          is_finite: boolean;
+          status: "active" | "completed" | "replaced";
+          completed_at: string | null;
           id: string;
           user_id: string;
           program_id: string;
@@ -237,6 +280,9 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          is_finite?: boolean;
+          status?: "active" | "completed" | "replaced";
+          completed_at?: string | null;
           id?: string;
           user_id: string;
           program_id: string;
@@ -439,6 +485,7 @@ export type Database = {
 
       workout_log_sets: {
         Row: {
+          hold_seconds: number | null;
           id: string;
           log_exercise_id: string;
           set_number: number;
@@ -451,6 +498,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          hold_seconds?: number | null;
           id?: string;
           log_exercise_id: string;
           set_number: number;
@@ -556,6 +604,20 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      save_coaching_draft: {
+        Args: { p_member_id: string; p_brief: string; p_scope: Json; p_content?: Json | null; p_draft_id?: string | null; p_expected_revision?: number | null; p_generation_job_id?: string | null };
+        Returns: Database["public"]["Tables"]["coaching_drafts"]["Row"];
+      };
+      set_coaching_generation: { Args: { p_draft_id: string; p_expected_revision: number; p_job_id: string | null }; Returns: Database["public"]["Tables"]["coaching_drafts"]["Row"] };
+      complete_coaching_generation: { Args: { p_draft_id: string; p_job_id: string; p_content: Json }; Returns: Database["public"]["Tables"]["coaching_drafts"]["Row"] };
+      approve_coaching_draft: {
+        Args: { p_draft_id: string; p_expected_revision: number };
+        Returns: Json;
+      };
+      assign_program_atomically: { Args: { p_member_id: string; p_program_id: string }; Returns: string };
+      save_coach_chat_turn: { Args: { p_job_id: string; p_question: string; p_answer: string | null; p_assignment_id?: string | null }; Returns: string };
+      create_coaching_review_request: { Args: { p_message: string }; Returns: string };
+      can_read_coaching_program: { Args: { p_program_id: string }; Returns: boolean };
       is_admin: {
         Args: Record<string, never>;
         Returns: boolean;
