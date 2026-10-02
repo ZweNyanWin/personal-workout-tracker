@@ -70,7 +70,7 @@ export async function buildClientContext(
         const weekText = `WEEK ${week.number}: ${week.focus}\n` + week.days.map((day) =>
           `DAY ${day.number}: ${day.title}. Warmup: ${day.warmup}\n` + day.exercises.map((exercise) => {
             const dose = exercise.dose.kind === "hold" ? `${exercise.dose.seconds.min}–${exercise.dose.seconds.max} seconds` : `${exercise.dose.range.min}–${exercise.dose.range.max} reps${exercise.dose.perSide ? " per side" : ""}`;
-            return `${exercise.name}: ${exercise.sets} sets × ${dose}; load/assistance=${exercise.loadOrAssistance}; effort=${exercise.effort}; rest=${formatRestMinutes(exercise.restSeconds)}${exercise.notes ? `; notes=${exercise.notes}` : ""}`;
+            return `${exercise.name}: ${exercise.sets} sets × ${dose}; load/assistance=${exercise.loadOrAssistance}; effort=${exercise.effort}; rest=${formatRestMinutes(exercise.restSeconds, exercise.restRangeMinutes)}${exercise.notes ? `; notes=${exercise.notes}` : ""}`;
           }).join("\n")
         ).join("\n");
         if (parts.join("\n\n").length + weekText.length <= 9400) {

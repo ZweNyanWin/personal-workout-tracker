@@ -22,6 +22,9 @@ DECLARE content jsonb := '{"title":"Exact synthetic block","status":"proposed","
  scope jsonb := '{"startWeek":5,"weekCount":1,"daysPerWeek":1}';
  draft coaching_drafts; result jsonb; repeated jsonb; failing jsonb; g uuid := gen_random_uuid(); before_count integer;
 BEGIN
+ content:=jsonb_set(content,'{weeks,0,days,0,exercises,0,effort}','"RPE 8"');
+ content:=jsonb_set(content,'{weeks,0,days,0,exercises,0,restSeconds}','300');
+ content:=jsonb_set(content,'{weeks,0,days,0,exercises,0,restRangeMinutes}','{"min":4,"max":6}');
  draft:=save_coaching_draft('00000000-0000-4000-8000-000000000002','Synthetic brief',scope,content);
  BEGIN
    PERFORM save_coaching_draft(draft.member_id,'Changed',scope,content,draft.id,99);
@@ -42,6 +45,7 @@ BEGIN
  IF (SELECT count(*) FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid)<>3 THEN RAISE EXCEPTION 'TEST FAILED: top/backdown groups lost'; END IF;
  IF NOT EXISTS(SELECT 1 FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid AND target_reps='8–12 seconds' AND prescription->>'name'='Tuck Front Lever') THEN RAISE EXCEPTION 'TEST FAILED: hold seconds lost'; END IF;
  IF NOT EXISTS(SELECT 1 FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid AND prescription->>'loadOrAssistance'='100 lb') THEN RAISE EXCEPTION 'TEST FAILED: original load unit lost'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM session_exercises se JOIN program_sessions s ON s.id=se.session_id WHERE s.program_id=(result->>'programId')::uuid AND rest_seconds=300 AND prescription->'restRangeMinutes'='{"min":4,"max":6}'::jsonb) THEN RAISE EXCEPTION 'TEST FAILED: suggested rest range or timer lost'; END IF;
  INSERT INTO fixture_ids VALUES(draft.id,(result->>'assignmentId')::uuid,(result->>'programId')::uuid,g);
  BEGIN
    UPDATE programs SET title='Changed' WHERE id=(result->>'programId')::uuid;

@@ -96,10 +96,12 @@ function NumberField({
 
 function RestMinutesField({
   seconds,
+  suggestedRange,
   onChange,
   disabled,
 }: {
   seconds: number;
+  suggestedRange?: { min: number; max: number };
   onChange: (seconds: number) => void;
   disabled?: boolean;
 }) {
@@ -131,6 +133,7 @@ function RestMinutesField({
         }}
         disabled={disabled}
       />
+      {suggestedRange && <p className="text-xs text-muted-foreground">Suggested rest: 4–6 min · timer starts at 5 min. Editing this value sets your exact rest.</p>}
     </div>
   );
 }
@@ -275,14 +278,15 @@ function ExerciseEditor({
         <TextField
           label="Effort · RPE / RIR / hold quality"
           value={exercise.effort}
-          onChange={(effort) => update({ effort })}
+          onChange={(effort) => update({ effort, restRangeMinutes: undefined })}
           disabled={disabled}
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
         <RestMinutesField
           seconds={exercise.restSeconds}
-          onChange={(restSeconds) => update({ restSeconds })}
+          suggestedRange={exercise.restRangeMinutes}
+          onChange={(restSeconds) => update({ restSeconds, restRangeMinutes: undefined })}
           disabled={disabled}
         />
         <TextField

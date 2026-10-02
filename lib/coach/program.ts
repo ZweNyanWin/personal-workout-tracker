@@ -16,6 +16,7 @@ export const exercisePrescriptionSchema = z.object({
   loadOrAssistance: text,
   effort: text,
   restSeconds: z.number().int().min(15).max(600),
+  restRangeMinutes: z.object({ min: z.literal(4), max: z.literal(6) }).strict().optional(),
 }).strict();
 
 export const programDraftSchema = z.object({

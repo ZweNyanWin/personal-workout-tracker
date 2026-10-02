@@ -692,7 +692,7 @@ export default function SessionDetailPage() {
 
             const restDisplay =
               se.rest_seconds != null
-                ? formatRestMinutes(se.rest_seconds)
+                ? formatRestMinutes(se.rest_seconds, prescription?.restRangeMinutes)
                 : null;
 
             return (

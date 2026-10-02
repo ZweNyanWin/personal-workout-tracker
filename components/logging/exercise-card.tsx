@@ -117,7 +117,7 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
             {planned?.rest_seconds && (
               <span className="text-xs text-muted-foreground">
                 ·{" "}
-                {formatRestMinutes(planned.rest_seconds)} rest
+                {formatRestMinutes(planned.rest_seconds, prescription?.restRangeMinutes)} rest
               </span>
             )}
           </div>

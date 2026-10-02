@@ -8,7 +8,17 @@ export const coachingScopeSchema = z.object({
   daysPerWeek: z.number().int().min(1).max(7),
 }).strict().refine((scope) => scope.startWeek + scope.weekCount - 1 <= 52, "Week range exceeds 52");
 
-export const coachingPrescriptionSchema = exercisePrescriptionSchema.extend({ notes: z.string().trim().max(1200).optional() });
+export const coachingPrescriptionSchema = exercisePrescriptionSchema.extend({ notes: z.string().trim().max(1200).optional() }).superRefine((exercise, context) => {
+  if (exercise.restRangeMinutes && exercise.restSeconds !== 300) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["restSeconds"], message: "The suggested 4–6 min range uses a 5 min timer default." });
+  }
+  if (exercise.restRangeMinutes) {
+    const rpe = /\bRPE\s*(\d+(?:\.\d+)?)(?:\s*[-–]\s*(\d+(?:\.\d+)?))?/i.exec(exercise.effort);
+    if (!rpe || Math.max(Number(rpe[1]), Number(rpe[2] ?? rpe[1])) <= 7.5) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["effort"], message: "The suggested rest range applies above RPE 7.5." });
+    }
+  }
+});
 export const workflowProgramDraftSchema = programDraftSchema.extend({
   weeks: z.array(z.object({
     number: z.number().int().min(1).max(52),

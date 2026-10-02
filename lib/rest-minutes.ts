@@ -7,6 +7,9 @@ export function restSeconds(minutes: number): number {
   return Math.round(minutes * 60);
 }
 
-export function formatRestMinutes(seconds: number): string {
+export function formatRestMinutes(seconds: number, suggestedRange?: { min: number; max: number }): string {
+  if (seconds === 300 && suggestedRange?.min === 4 && suggestedRange.max === 6) {
+    return "4–6 min (5 min timer)";
+  }
   return `${restMinutes(seconds)} min`;
 }
