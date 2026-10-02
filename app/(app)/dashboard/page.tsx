@@ -5,7 +5,9 @@ import { NextSessionCard } from "@/components/dashboard/next-session-card";
 import { StatsRow } from "@/components/dashboard/stats-row";
 import { RecentWorkouts } from "@/components/dashboard/recent-workouts";
 import { InstallApp } from "@/components/pwa/install-app";
-import { Dumbbell, Scale, Flame } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Dumbbell, Scale, Flame, MessageCircle } from "lucide-react";
 import { formatWeight, relativeDate } from "@/lib/utils";
 import type { Metadata } from "next";
 
@@ -35,7 +37,9 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted-foreground mt-0.5">
             {data.nextSession
               ? `Next up: ${data.nextSession.title}`
-              : "No session scheduled"}
+              : data.activeAssignment?.status === "completed"
+                ? "Your block is complete"
+                : "No session scheduled"}
           </p>
         </div>
 
@@ -46,6 +50,13 @@ export default async function DashboardPage() {
           totalSessions={totalSessions}
         />
 
+        <Button asChild variant="outline" className="w-full">
+          <Link href="/coach">
+            <MessageCircle className="h-4 w-4" />
+            Ask Tommy about your training
+          </Link>
+        </Button>
+
         <InstallApp />
 
         {/* Stats row */}
@@ -53,7 +64,10 @@ export default async function DashboardPage() {
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
             Performance
           </h3>
-          <StatsRow e1rmCards={data.e1rmCards} weeklyVolume={data.weeklyVolume} />
+          <StatsRow
+            e1rmCards={data.e1rmCards}
+            weeklyVolume={data.weeklyVolume}
+          />
         </div>
 
         {/* Streak + bodyweight + recent PR row */}
@@ -82,9 +96,13 @@ export default async function DashboardPage() {
               <>
                 <p className="text-2xl font-bold font-num">
                   {formatWeight(data.bodyweight.bodyweight_kg)}
-                  <span className="text-sm font-normal text-muted-foreground ml-1">kg</span>
+                  <span className="text-sm font-normal text-muted-foreground ml-1">
+                    kg
+                  </span>
                 </p>
-                <p className="text-xs text-muted-foreground">{relativeDate(data.bodyweight.date)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {relativeDate(data.bodyweight.date)}
+                </p>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Not logged</p>
@@ -99,7 +117,10 @@ export default async function DashboardPage() {
             {data.recentPRs && data.recentPRs.length > 0 ? (
               <div className="space-y-1">
                 {data.recentPRs.slice(0, 2).map((pr) => (
-                  <div key={pr.id} className="flex items-baseline justify-between">
+                  <div
+                    key={pr.id}
+                    className="flex items-baseline justify-between"
+                  >
                     <span className="text-xs text-muted-foreground truncate">
                       {pr.exercise?.name?.split(" ")[0]}
                     </span>

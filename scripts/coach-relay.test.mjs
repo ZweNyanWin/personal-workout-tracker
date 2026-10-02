@@ -10,6 +10,36 @@ const jobId = "22222222-2222-4222-8222-222222222222";
 const config = { url: "https://fixture-connector.trycloudflare.com", token: "a".repeat(43), appUrl: app };
 const question = { messages: [{ role: "user", content: "Explain a squat warm-up." }] };
 
+test("server context is bound to authenticated user and conversation persistence is idempotent at completion", async () => {
+  const writes = [];
+  const { handle, calls } = fixture(Response.json({ jobId, status: "running" }), {
+    context: async (id) => { assert.equal(id, userId); return { text: "Approved program: four weeks. Completed logs: none.", assignmentId: null }; },
+    accepted: async (...args) => writes.push(args),
+  });
+  assert.equal((await handle(request("POST"))).status, 202);
+  const payload = JSON.parse(calls[0].init.body);
+  assert.match(payload.context, /Completed logs: none/);
+  assert.equal(payload.userId, userId);
+  assert.deepEqual(writes[0], [userId, jobId, question.messages[0].content, null]);
+  let completed = 0;
+  const next = fixture(Response.json({ jobId, status: "completed", answer: "Answer" }), {
+    completed: async (id, job, answer) => { assert.deepEqual([id, job, answer], [userId, jobId, "Answer"]); completed++; },
+  });
+  assert.equal((await next.handle(request("GET", `?jobId=${jobId}`))).status, 200);
+  assert.equal(completed, 1);
+});
+
+test("database context failure blocks generation and failed request persistence cancels accepted work", async () => {
+  const unavailable = fixture(Response.json({ jobId, status: "running" }), { context: async () => { throw new Error("private database detail"); } });
+  assert.equal((await unavailable.handle(request("POST"))).status, 503);
+  assert.equal(unavailable.calls.length, 0);
+  const rejected = fixture(Response.json({ jobId, status: "running" }), { accepted: async () => { throw new Error("private database detail"); } });
+  const response = await rejected.handle(request("POST"));
+  assert.equal(response.status, 503);
+  assert.equal(rejected.calls.at(-1).init.method, "DELETE");
+  assert.equal((await response.text()).includes("private database detail"), false);
+});
+
 function request(method = "GET", query = "", body = question, origin = app) {
   return new Request(`${app}/api/coach${query}`, {
     method, headers: { Origin: origin, "Content-Type": "application/json" },

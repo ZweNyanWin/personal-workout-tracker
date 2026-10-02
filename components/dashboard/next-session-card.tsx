@@ -1,7 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronRight, Eye, Zap } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Eye,
+  MessageCircle,
+  Zap,
+} from "lucide-react";
 import { SESSION_BG_COLORS } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,20 +19,60 @@ interface NextSessionCardProps {
   totalSessions: number;
 }
 
-export function NextSessionCard({ session, assignment, totalSessions }: NextSessionCardProps) {
+export function NextSessionCard({
+  session,
+  assignment,
+  totalSessions,
+}: NextSessionCardProps) {
   const router = useRouter();
 
-  if (!session || !assignment) {
+  if (assignment?.status === "completed") {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
-        <p className="text-sm text-muted-foreground">No active program assigned.</p>
-        <p className="text-xs text-muted-foreground mt-1">Ask your coach to assign a program.</p>
+      <div className="rounded-xl border border-success/30 bg-success/5 p-5 space-y-3">
+        <h3 className="flex items-center gap-2 font-semibold">
+          <CheckCircle2 className="h-5 w-5 text-success" />
+          Block complete
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          You completed {assignment.program.title}. Your coach can review your
+          logs and prepare your next block.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/workout")}
+          >
+            Review this program
+          </Button>
+          <Button size="sm" onClick={() => router.push("/coach")}>
+            <MessageCircle className="h-3.5 w-3.5" />
+            Ask Tommy
+          </Button>
+        </div>
       </div>
     );
   }
 
-  const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
-  const sessionNum = (assignment.current_session_index % totalSessions) + 1;
+  if (!session || !assignment) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          No active program assigned.
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Ask your coach to assign a program.
+        </p>
+      </div>
+    );
+  }
+
+  const colorClass =
+    SESSION_BG_COLORS[session.title] ??
+    "bg-primary/20 text-primary border-primary/30";
+  const sessionNum = assignment.is_finite
+    ? assignment.current_session_index + 1
+    : (assignment.current_session_index % totalSessions) + 1;
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -44,9 +90,13 @@ export function NextSessionCard({ session, assignment, totalSessions }: NextSess
                 Session {sessionNum} of {totalSessions}
               </span>
             </div>
-            <p className="text-xl font-bold truncate">{assignment.program.title}</p>
+            <p className="text-xl font-bold truncate">
+              {assignment.program.title}
+            </p>
             {session.notes && (
-              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{session.notes}</p>
+              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                {session.notes}
+              </p>
             )}
           </div>
           <div className="shrink-0">

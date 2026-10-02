@@ -3,7 +3,14 @@ import { updateSession } from "@/lib/supabase/middleware";
 import { NextResponse } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  if (["/preview/coach", "/preview/ollama", "/api/local-ollama"].includes(request.nextUrl.pathname)) {
+  if (
+    [
+      "/preview/coach",
+      "/preview/coaching",
+      "/preview/ollama",
+      "/api/local-ollama",
+    ].includes(request.nextUrl.pathname)
+  ) {
     return process.env.NODE_ENV === "development"
       ? NextResponse.next()
       : new NextResponse(null, { status: 404 });

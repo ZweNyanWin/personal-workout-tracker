@@ -80,7 +80,7 @@ export async function getMemberDetail(memberId: string) {
       .single(),
     supabase
       .from("user_program_assignments")
-      .select("id, user_id, program_id, assigned_by, is_active, current_session_index, created_at, started_at, program:programs(id, title, description)")
+      .select("id, user_id, program_id, assigned_by, is_active, current_session_index, is_finite, status, completed_at, created_at, started_at, program:programs(id, title, description)")
       .eq("user_id", memberId)
       .order("created_at", { ascending: false }),
     supabase
@@ -139,26 +139,13 @@ async function assignProgramForUser(
   userId: string,
   programId: string
 ): Promise<ActionResult> {
-  // Deactivate existing active assignments
-  await supabase
-    .from("user_program_assignments")
-    .update({ is_active: false })
-    .eq("user_id", userId)
-    .eq("is_active", true);
-
-  // Create new assignment
-  const { error } = await supabase
-    .from("user_program_assignments")
-    .upsert(
-      {
-        user_id: userId,
-        program_id: programId,
-        assigned_by: adminUserId,
-        is_active: true,
-        current_session_index: 0,
-      },
-      { onConflict: "user_id,program_id" }
-    );
+  // Publish a separate client snapshot and replace its assignment in one transaction.
+  // Never deactivate the current plan before the replacement can be created.
+  void adminUserId;
+  const { error } = await supabase.rpc("assign_program_atomically", {
+    p_member_id: userId,
+    p_program_id: programId,
+  });
 
   if (error) return { success: false, error: error.message };
   return { success: true, data: undefined };
@@ -243,6 +230,7 @@ export async function getAllPrograms() {
   const { data } = await supabase
     .from("programs")
     .select("id, title, description, is_template, created_at, blocks:program_blocks(id, title, order_index, duration_weeks, sessions:program_sessions(id, title, notes, session_order, exercises:session_exercises(id)))")
+    .is("client_id", null)
     .order("created_at", { ascending: false });
 
   return data ?? [];
@@ -254,6 +242,7 @@ export async function getProgramOptions() {
   const { data } = await supabase
     .from("programs")
     .select("id, title")
+    .is("client_id", null)
     .order("created_at", { ascending: false });
 
   return data ?? [];
@@ -497,6 +486,7 @@ export async function getAllExercises(includePrivate = false) {
   const query = supabase
     .from("exercises")
     .select("*")
+    .is("coaching_client_id", null)
     .order("name", { ascending: true });
 
   if (!includePrivate) query.eq("is_public", true);
@@ -679,7 +669,7 @@ export async function getSessionWithExercises(sessionId: string) {
     user
       ? supabase
           .from("user_program_assignments")
-          .select("program_id, current_session_index")
+          .select("program_id, current_session_index, is_finite, status")
           .eq("user_id", user.id)
           .eq("is_active", true)
           .maybeSingle()
@@ -690,7 +680,7 @@ export async function getSessionWithExercises(sessionId: string) {
 
   if (!session) return null;
 
-  const [exercisesResult, programSessionsResult] = await Promise.all([
+  const [exercisesResult, programSessionsResult, programResult] = await Promise.all([
     supabase
       .from("session_exercises")
       .select("*, exercise:exercises(*)")
@@ -703,17 +693,19 @@ export async function getSessionWithExercises(sessionId: string) {
           .eq("program_id", session.program_id)
           .order("session_order", { ascending: true })
       : Promise.resolve({ data: null }),
+    supabase.from("programs").select("approved_snapshot").eq("id", session.program_id).single(),
   ]);
 
   const activeSessions = programSessionsResult.data;
   const currentSession = activeSessions?.length && assignmentResult.data
-    ? activeSessions[assignmentResult.data.current_session_index % activeSessions.length]
+    ? activeSessions[assignmentResult.data.is_finite ? assignmentResult.data.current_session_index : assignmentResult.data.current_session_index % activeSessions.length]
     : null;
 
   return {
     ...session,
     exercises: exercisesResult.data ?? [],
     viewer_role: profileResult.data?.role ?? "member",
+    can_edit: profileResult.data?.role === "admin" && programResult.data?.approved_snapshot == null,
     can_start: currentSession?.id === sessionId,
   };
 }
@@ -968,7 +960,8 @@ WEEK 4 (Deload)
 ];
 
 async function buildExerciseLookup(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data } = await supabase.from("exercises").select("id, name");
+  const { data } = await supabase.from("exercises").select("id, name")
+    .is("coaching_client_id", null).eq("is_public", true);
   const map = new Map<string, string>();
 
   for (const exercise of data ?? []) {

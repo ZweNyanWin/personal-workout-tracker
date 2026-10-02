@@ -7,6 +7,7 @@ import { addSet } from "@/lib/actions/workout";
 import { SetRow } from "./set-row";
 import { cn } from "@/lib/utils";
 import type { WorkoutLogExerciseWithSets, WorkoutLogSet } from "@/types";
+import { doseLabel, readPrescription } from "./prescription";
 
 interface ExerciseCardProps {
   logExercise: WorkoutLogExerciseWithSets;
@@ -44,6 +45,7 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
           set_number: sets.length + 1,
           weight_kg: null,
           reps: null,
+          hold_seconds: null,
           rpe: null,
           is_warmup: false,
           is_completed: false,
@@ -61,12 +63,18 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
 
   const planned = logExercise.planned;
   const exercise = logExercise.exercise;
+  const prescription = readPrescription(planned?.prescription);
+  const isHold =
+    prescription?.dose.kind === "hold" ||
+    sets.some((set) => set.hold_seconds != null);
 
   return (
-    <div className={cn(
-      "rounded-xl border overflow-hidden transition-colors",
-      allDone ? "border-success/30 bg-success/5" : "border-border bg-card"
-    )}>
+    <div
+      className={cn(
+        "rounded-xl border overflow-hidden transition-colors",
+        allDone ? "border-success/30 bg-success/5" : "border-border bg-card",
+      )}
+    >
       {/* Header */}
       <button
         className="w-full flex items-center gap-3 p-4 tap-none text-left"
@@ -74,26 +82,41 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold">{exercise.name}</h3>
+            <h3 className="text-sm font-semibold">
+              {prescription?.name ?? exercise.name}
+            </h3>
             {planned && (
               <span className="text-xs text-muted-foreground">
-                {planned.target_sets && planned.target_reps
-                  ? `${planned.target_sets}×${planned.target_reps}`
-                  : ""}
-                {planned.target_rpe ? ` @RPE ${planned.target_rpe}` : ""}
+                {prescription
+                  ? `${prescription.sets} × ${doseLabel(prescription.dose)}`
+                  : planned.target_sets && planned.target_reps
+                    ? `${planned.target_sets}×${planned.target_reps}`
+                    : ""}
+                {prescription
+                  ? ` · ${prescription.effort}`
+                  : planned.target_rpe
+                    ? ` @RPE ${planned.target_rpe}`
+                    : ""}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className={cn(
-              "text-xs font-medium",
-              allDone ? "text-success" : completedCount > 0 ? "text-primary" : "text-muted-foreground"
-            )}>
+            <span
+              className={cn(
+                "text-xs font-medium",
+                allDone
+                  ? "text-success"
+                  : completedCount > 0
+                    ? "text-primary"
+                    : "text-muted-foreground",
+              )}
+            >
               {completedCount}/{totalCount} sets
             </span>
             {planned?.rest_seconds && (
               <span className="text-xs text-muted-foreground">
-                · {planned.rest_seconds >= 60
+                ·{" "}
+                {planned.rest_seconds >= 60
                   ? `${Math.round(planned.rest_seconds / 60)}m rest`
                   : `${planned.rest_seconds}s rest`}
               </span>
@@ -109,13 +132,30 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
 
       {!collapsed && (
         <div className="px-3 pb-3 space-y-1">
+          {prescription && (
+            <p className="mb-3 rounded-lg bg-accent/40 p-2 text-xs leading-relaxed">
+              {prescription.loadOrAssistance} · {prescription.effort}
+            </p>
+          )}
           {/* Column headers */}
           <div className="flex items-center gap-2 px-1 mb-1">
-            <span className="w-6 text-center text-[10px] text-muted-foreground">#</span>
-            <span className="w-16 text-center text-[10px] text-muted-foreground hidden sm:block">PREV</span>
-            <span className="flex-1 text-center text-[10px] text-muted-foreground">KG</span>
-            <span className="w-16 text-center text-[10px] text-muted-foreground">REPS</span>
-            <span className="w-14 text-center text-[10px] text-muted-foreground">RPE</span>
+            <span className="w-6 text-center text-[10px] text-muted-foreground">
+              #
+            </span>
+            <span className="w-16 text-center text-[10px] text-muted-foreground hidden sm:block">
+              PREV
+            </span>
+            <span className="flex-1 text-center text-[10px] text-muted-foreground">
+              KG
+            </span>
+            <span className="w-16 text-center text-[10px] text-muted-foreground">
+              {isHold ? "SECONDS" : "REPS"}
+            </span>
+            {!isHold && (
+              <span className="w-14 text-center text-[10px] text-muted-foreground">
+                RPE
+              </span>
+            )}
             <span className="w-10" />
             <span className="w-8" />
           </div>

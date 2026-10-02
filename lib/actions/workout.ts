@@ -60,8 +60,8 @@ export async function getDashboardData() {
 
   let nextSession = null;
   if (sessionsResult.data && sessionsResult.data.length > 0) {
-    const idx = (assignment!.current_session_index) % sessionsResult.data.length;
-    nextSession = sessionsResult.data[idx];
+    const idx = assignment!.is_finite ? assignment!.current_session_index : assignment!.current_session_index % sessionsResult.data.length;
+    nextSession = sessionsResult.data[idx] ?? null;
   }
 
   const prs = prsResult.data;
@@ -209,7 +209,7 @@ export async function startWorkout(sessionId: string): Promise<ActionResult<stri
 
   const { data: assignment } = await supabase
     .from("user_program_assignments")
-    .select("id, program_id, current_session_index")
+    .select("id, program_id, current_session_index, is_finite, status")
     .eq("user_id", user.id)
     .eq("is_active", true)
     .maybeSingle();
@@ -225,7 +225,7 @@ export async function startWorkout(sessionId: string): Promise<ActionResult<stri
     .order("session_order", { ascending: true });
 
   const currentSession = programSessions?.length
-    ? programSessions[assignment.current_session_index % programSessions.length]
+    ? programSessions[assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % programSessions.length]
     : null;
 
   if (currentSession?.id !== sessionId) {
@@ -305,7 +305,7 @@ export async function getWorkoutLog(logId: string): Promise<WorkoutLogFull | nul
 
   const { data: logExercises } = await supabase
     .from("workout_log_exercises")
-    .select("*, exercise:exercises(*)")
+    .select("*, exercise:exercises(*), planned:session_exercises(*, exercise:exercises(*))")
     .eq("workout_log_id", logId)
     .order("order_index", { ascending: true });
 
@@ -326,7 +326,7 @@ export async function getWorkoutLog(logId: string): Promise<WorkoutLogFull | nul
     setsMap.set(set.log_exercise_id, arr);
   }
 
-  // Attach planned data for previous-session comparison
+  // Keep the exact approved dose available while logging holds and repetitions.
   const exercises = logExercises.map((ex) => ({
     ...ex,
     sets: setsMap.get(ex.id) ?? [],
@@ -338,7 +338,7 @@ export async function getWorkoutLog(logId: string): Promise<WorkoutLogFull | nul
 // ─── Update a single set ──────────────────────────────────────
 export async function updateSet(
   setId: string,
-  data: { weight_kg?: number | null; reps?: number | null; rpe?: number | null; is_completed?: boolean }
+  data: { weight_kg?: number | null; reps?: number | null; hold_seconds?: number | null; rpe?: number | null; is_completed?: boolean }
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const parsed = workoutSetUpdateSchema.safeParse(data);
@@ -351,7 +351,11 @@ export async function updateSet(
 
   const { error } = await supabase
     .from("workout_log_sets")
-    .update(parsed.data)
+    .update({
+      ...parsed.data,
+      ...(parsed.data.hold_seconds != null ? { reps: null } : {}),
+      ...(parsed.data.reps != null ? { hold_seconds: null } : {}),
+    })
     .eq("id", setId);
 
   if (error) return { success: false, error: error.message };
@@ -500,7 +504,7 @@ async function advanceAssignmentForSession(
 
   const { data: assignment } = await supabase
     .from("user_program_assignments")
-    .select("current_session_index, program_id")
+    .select("current_session_index, program_id, is_finite, status")
     .eq("id", assignmentId)
     .eq("is_active", true)
     .maybeSingle();
@@ -516,8 +520,8 @@ async function advanceAssignmentForSession(
   if (sessionsError) return { success: false, error: sessionsError.message };
   if (!sessions?.length) return { success: true, data: undefined };
 
-  const currentSession = sessions[assignment.current_session_index % sessions.length];
-  if (currentSession.id !== sessionId) return { success: true, data: undefined };
+  const currentSession = sessions[assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % sessions.length];
+  if (!currentSession || currentSession.id !== sessionId) return { success: true, data: undefined };
 
   const { error } = await supabase
     .from("user_program_assignments")
@@ -545,7 +549,7 @@ async function checkAndRecordPRs(logId: string, userId: string) {
   for (const ex of logExercises) {
     const completedSets = ex.sets.filter(
       (set): set is typeof set & { weight_kg: number; reps: number } =>
-        set.is_completed && set.weight_kg !== null && set.reps !== null
+        set.is_completed && set.hold_seconds === null && set.weight_kg !== null && set.reps !== null
     );
     if (!completedSets.length) continue;
 
@@ -706,7 +710,7 @@ export async function markSessionDone(sessionId: string): Promise<ActionResult> 
 
   const { data: assignment } = await supabase
     .from("user_program_assignments")
-    .select("id, program_id, current_session_index")
+    .select("id, program_id, current_session_index, is_finite, status")
     .eq("user_id", user.id)
     .eq("is_active", true)
     .maybeSingle();
@@ -721,8 +725,8 @@ export async function markSessionDone(sessionId: string): Promise<ActionResult> 
 
   if (!sessions?.length) return { success: false, error: "No sessions in this program" };
 
-  const currentSession = sessions[assignment.current_session_index % sessions.length];
-  if (currentSession.id !== sessionId) {
+  const currentSession = sessions[assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % sessions.length];
+  if (!currentSession || currentSession.id !== sessionId) {
     return { success: false, error: "Complete your current session first" };
   }
 
@@ -789,7 +793,7 @@ export async function unmarkSessionDone(sessionId: string): Promise<ActionResult
 
   const { data: assignment } = await supabase
     .from("user_program_assignments")
-    .select("id, current_session_index, program_id")
+    .select("id, current_session_index, program_id, is_finite, status")
     .eq("user_id", user.id)
     .eq("is_active", true)
     .maybeSingle();
@@ -804,8 +808,8 @@ export async function unmarkSessionDone(sessionId: string): Promise<ActionResult
 
   if (!sessions?.length) return { success: false, error: "No sessions in this program" };
 
-  const prevIndex = (assignment.current_session_index - 1 + sessions.length) % sessions.length;
-  if (sessions[prevIndex].id !== sessionId) {
+  const prevIndex = assignment.is_finite ? assignment.current_session_index - 1 : (assignment.current_session_index - 1 + sessions.length) % sessions.length;
+  if (prevIndex < 0 || sessions[prevIndex]?.id !== sessionId) {
     return { success: false, error: "Only the most recent session can be reopened" };
   }
 

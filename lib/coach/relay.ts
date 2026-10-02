@@ -25,6 +25,9 @@ type Dependencies = {
   config: () => RelayConfig;
   fetch?: typeof fetch;
   authTimeoutMs?: number;
+  context?: (userId: string, question: string) => Promise<{ text: string; assignmentId?: string | null }>;
+  accepted?: (userId: string, jobId: string, question: string, assignmentId: string | null) => Promise<void>;
+  completed?: (userId: string, jobId: string, answer: string) => Promise<void>;
 };
 
 export function validGatewayConfig(config: RelayConfig): { origin: string; token: string } | null {
@@ -125,11 +128,13 @@ export function createCoachHandler(dependencies: Dependencies) {
     }
     const path = jobId ? `/v1/jobs/${jobId}?userId=${encodeURIComponent(user.id)}` : request.method === "POST" ? "/v1/jobs" : "/v1/status";
     try {
+      const records = messages && dependencies.context ? await dependencies.context(user.id, messages.at(-1)!.content) : undefined;
+      const context = records?.text.slice(0, 12000);
       const upstream = await network(gateway.origin + path, {
         method: request.method, redirect: "error", cache: "no-store",
         signal: AbortSignal.any([request.signal, AbortSignal.timeout(COACH_GATEWAY_TIMEOUT_MS)]),
         headers: { Authorization: `Bearer ${gateway.token}`, ...(messages ? { "Content-Type": "application/json" } : {}) },
-        ...(messages ? { body: JSON.stringify({ userId: user.id, messages }) } : {}),
+        ...(messages ? { body: JSON.stringify({ userId: user.id, messages, ...(context !== undefined ? { context } : {}) }) } : {}),
       });
       if (!upstream.ok) {
         if (request.method === "GET" && !jobId) return json({ configured: true, online: false, busy: false, experimental: true, model: "workout-coach" });
@@ -145,10 +150,21 @@ export function createCoachHandler(dependencies: Dependencies) {
       }
       if (request.method === "POST") {
         const job = acceptedJob.parse(value);
+        if (dependencies.accepted) {
+          try { await dependencies.accepted(user.id, job.jobId, messages!.at(-1)!.content, records?.assignmentId ?? null); }
+          catch {
+            await network(`${gateway.origin}/v1/jobs/${job.jobId}?userId=${encodeURIComponent(user.id)}`, {
+              method: "DELETE", redirect: "error", headers: { Authorization: `Bearer ${gateway.token}` },
+              signal: AbortSignal.timeout(COACH_GATEWAY_TIMEOUT_MS),
+            }).catch(() => {});
+            return json({ error: "Could not save the conversation request. Your question is kept; please retry." }, 503);
+          }
+        }
         return json({ jobId: job.jobId, status: job.status }, 202);
       }
       const job = jobResponse.parse(value);
       if (job.jobId !== jobId || (job.status === "completed" && !job.answer?.trim())) throw new Error("Invalid job response");
+      if (job.status === "completed" && dependencies.completed) await dependencies.completed(user.id, job.jobId, job.answer!);
       return json({ jobId: job.jobId, status: job.status, ...(job.status === "completed" ? { answer: job.answer } : {}),
         ...(job.status === "failed" ? { error: "The model could not complete this answer. Try a shorter question or check the Mac." } : {}) });
     } catch {

@@ -73,9 +73,10 @@ export const bodyweightSchema = z.object({
 export const workoutSetUpdateSchema = z.object({
   weight_kg: z.number().finite().min(0).max(2000).nullable().optional(),
   reps: z.number().int().min(1).max(1000).nullable().optional(),
+  hold_seconds: z.number().finite().min(0).max(3600).nullable().optional(),
   rpe: z.number().finite().min(5).max(10).nullable().optional(),
   is_completed: z.boolean().optional(),
-});
+}).refine((set) => set.hold_seconds == null || set.reps == null, "Use repetitions or hold seconds for a set");
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;

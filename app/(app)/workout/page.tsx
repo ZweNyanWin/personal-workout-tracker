@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MarkDoneButton } from "@/components/workout/mark-done-button";
 import { SESSION_BG_COLORS } from "@/lib/utils";
-import { Eye } from "lucide-react";
+import { CheckCircle2, Eye, MessageCircle } from "lucide-react";
 import type { Metadata } from "next";
 import type { Tables } from "@/types/database";
 
@@ -20,12 +20,16 @@ export const dynamic = "force-dynamic";
 
 export default async function WorkoutPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, email, full_name, username, avatar_url, role, created_at, updated_at")
+    .select(
+      "id, email, full_name, username, avatar_url, role, created_at, updated_at",
+    )
     .eq("id", user.id)
     .single();
 
@@ -33,7 +37,9 @@ export default async function WorkoutPage() {
 
   const { data: assignment } = await supabase
     .from("user_program_assignments")
-    .select("id, user_id, program_id, is_active, current_session_index, program:programs(id, title, description)")
+    .select(
+      "id, user_id, program_id, is_active, is_finite, status, current_session_index, program:programs(id, title, description)",
+    )
     .eq("user_id", user.id)
     .eq("is_active", true)
     .maybeSingle();
@@ -48,7 +54,9 @@ export default async function WorkoutPage() {
     const [sessionsResult, completionResult] = await Promise.all([
       supabase
         .from("program_sessions")
-        .select("*, block:program_blocks(title, order_index), exercises:session_exercises(id)")
+        .select(
+          "*, block:program_blocks(title, order_index), exercises:session_exercises(id)",
+        )
         .eq("program_id", assignment.program_id)
         .order("session_order", { ascending: true }),
       supabase
@@ -68,16 +76,22 @@ export default async function WorkoutPage() {
 
   const totalSessions = sessions.length;
   const currentIdx = assignment?.current_session_index ?? 0;
-  const currentCycleIdx = totalSessions > 0 ? currentIdx % totalSessions : 0;
+  const blockComplete = assignment?.status === "completed";
+  const currentCycleIdx = assignment?.is_finite
+    ? Math.min(currentIdx, totalSessions)
+    : totalSessions > 0
+      ? currentIdx % totalSessions
+      : 0;
   const totalWeeks = new Set(
     sessions
       .map((session) => session.block?.order_index)
-      .filter((weekIndex) => weekIndex != null)
+      .filter((weekIndex) => weekIndex != null),
   ).size;
 
   function weekLabel(session: SessionRow) {
     if (!session.block) return "Week";
-    const weekNumber = session.block.order_index != null ? session.block.order_index + 1 : null;
+    const weekNumber =
+      session.block.order_index != null ? session.block.order_index + 1 : null;
     return weekNumber ? `Week ${weekNumber}` : session.block.title;
   }
 
@@ -89,31 +103,61 @@ export default async function WorkoutPage() {
         {!assignment ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <p className="text-muted-foreground">No program assigned yet.</p>
-            <p className="text-sm text-muted-foreground mt-1">Your coach will assign one soon.</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your coach will assign one soon.
+            </p>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold">{assignment.program?.title}</h2>
+                <h2 className="text-lg font-bold">
+                  {assignment.program?.title}
+                </h2>
                 <p className="text-sm text-muted-foreground">
-                  {totalSessions} sessions{totalWeeks ? ` across ${totalWeeks} weeks` : ""}
+                  {totalSessions} sessions
+                  {totalWeeks ? ` across ${totalWeeks} weeks` : ""}
                 </p>
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50/50 p-3 dark:border-teal-800 dark:bg-teal-950/30">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {blockComplete ? (
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    Block complete. Your coach can prepare the next block.
+                  </span>
+                ) : (
+                  "Questions about sets, effort, or substitutions? Tommy can explain your assigned plan."
+                )}
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/coach">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Ask Tommy
+                </Link>
+              </Button>
+            </div>
+
             <div className="space-y-3">
               {sessions.map((session, idx) => {
-                const colorClass = SESSION_BG_COLORS[session.title] ?? "bg-primary/20 text-primary border-primary/30";
+                const colorClass =
+                  SESSION_BG_COLORS[session.title] ??
+                  "bg-primary/20 text-primary border-primary/30";
                 const week = weekLabel(session);
-                const previousIdx = totalSessions > 0
-                  ? (currentCycleIdx - 1 + totalSessions) % totalSessions
-                  : -1;
+                const previousIdx = assignment.is_finite
+                  ? currentCycleIdx - 1
+                  : totalSessions > 0
+                    ? (currentCycleIdx - 1 + totalSessions) % totalSessions
+                    : -1;
                 const isMostRecent =
-                  idx === previousIdx && latestCompletion?.session_id === session.id;
+                  idx === previousIdx &&
+                  latestCompletion?.session_id === session.id;
                 const isDone = idx < currentCycleIdx || isMostRecent;
-                const canMarkDone = idx === currentCycleIdx;
-                const canUndo = isMostRecent && latestCompletion?.duration_minutes === 0;
+                const canMarkDone = !blockComplete && idx === currentCycleIdx;
+                const canUndo =
+                  isMostRecent && latestCompletion?.duration_minutes === 0;
 
                 return (
                   <div
@@ -141,15 +185,22 @@ export default async function WorkoutPage() {
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
                           {session.exercises?.length ?? 0} exercises
-                          {session.block?.title ? ` · ${session.block.title}` : ""}
+                          {session.block?.title
+                            ? ` · ${session.block.title}`
+                            : ""}
                         </p>
                         {session.notes && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{session.notes}</p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                            {session.notes}
+                          </p>
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {(canMarkDone || canUndo) && (
-                          <MarkDoneButton sessionId={session.id} isDone={isDone} />
+                          <MarkDoneButton
+                            sessionId={session.id}
+                            isDone={isDone}
+                          />
                         )}
                         <Button asChild variant="ghost" size="icon-sm">
                           <Link

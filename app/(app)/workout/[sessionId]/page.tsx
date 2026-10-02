@@ -24,15 +24,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  ArrowLeft,
-  Plus,
-  Trash2,
-  Dumbbell,
-  Pencil,
-  Play,
-} from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Dumbbell, Pencil, Play } from "lucide-react";
 import type { Exercise } from "@/types";
+import { doseLabel, readPrescription } from "@/components/logging/prescription";
 
 type SessionExerciseRow = {
   id: string;
@@ -44,6 +38,7 @@ type SessionExerciseRow = {
   rest_seconds: number | null;
   notes: string | null;
   is_warmup: boolean;
+  prescription?: unknown;
   exercise: Exercise;
 };
 
@@ -55,6 +50,7 @@ type SessionData = {
   exercises: SessionExerciseRow[];
   viewer_role?: string;
   can_start?: boolean;
+  can_edit?: boolean;
 };
 
 export default function SessionDetailPage() {
@@ -66,7 +62,9 @@ export default function SessionDetailPage() {
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SessionExerciseRow | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<SessionExerciseRow | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<SessionExerciseRow | null>(
+    null,
+  );
   const [isAdmin, setIsAdmin] = useState(false);
   const [saving, startSave] = useTransition();
   const [updating, startUpdate] = useTransition();
@@ -100,7 +98,9 @@ export default function SessionDetailPage() {
       .then((data) => {
         if (!data) return;
         setSession(data as SessionData);
-        const viewerIsAdmin = (data as SessionData).viewer_role === "admin";
+        const viewerIsAdmin =
+          (data as SessionData).viewer_role === "admin" &&
+          (data as SessionData).can_edit !== false;
         setIsAdmin(viewerIsAdmin);
         if (viewerIsAdmin) getAllExercises(true).then(setAllExercises);
       })
@@ -109,7 +109,7 @@ export default function SessionDetailPage() {
   }, [sessionId]);
 
   const filteredExercises = allExercises.filter((ex) =>
-    ex.name.toLowerCase().includes(search.toLowerCase())
+    ex.name.toLowerCase().includes(search.toLowerCase()),
   );
 
   function resetForm() {
@@ -132,9 +132,12 @@ export default function SessionDetailPage() {
     }
     startSave(async () => {
       const rawWeight = weightKg ? parseFloat(weightKg) : undefined;
-      const weightInKg = rawWeight !== undefined
-        ? unit === "lb" ? Math.round(rawWeight * 0.453592 * 10) / 10 : rawWeight
-        : undefined;
+      const weightInKg =
+        rawWeight !== undefined
+          ? unit === "lb"
+            ? Math.round(rawWeight * 0.453592 * 10) / 10
+            : rawWeight
+          : undefined;
 
       const result = await addSessionExercise(sessionId, selectedExId, {
         target_sets: sets ? parseInt(sets) : undefined,
@@ -188,9 +191,12 @@ export default function SessionDetailPage() {
     if (!editTarget) return;
     startUpdate(async () => {
       const rawWeight = editWeight ? parseFloat(editWeight) : null;
-      const weightInKg = rawWeight != null
-        ? editUnit === "lb" ? Math.round(rawWeight * 0.453592 * 10) / 10 : rawWeight
-        : null;
+      const weightInKg =
+        rawWeight != null
+          ? editUnit === "lb"
+            ? Math.round(rawWeight * 0.453592 * 10) / 10
+            : rawWeight
+          : null;
 
       const result = await updateSessionExercise(editTarget.id, {
         target_sets: editSets ? parseInt(editSets) : null,
@@ -225,7 +231,9 @@ export default function SessionDetailPage() {
   if (loadingSession) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground text-sm animate-pulse">Loading session…</p>
+        <p className="text-muted-foreground text-sm animate-pulse">
+          Loading session…
+        </p>
       </div>
     );
   }
@@ -239,7 +247,11 @@ export default function SessionDetailPage() {
             It may have been removed or is no longer accessible.
           </p>
         </div>
-        <Button type="button" variant="outline" onClick={() => router.replace("/workout")}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => router.replace("/workout")}
+        >
           Back to program
         </Button>
       </div>
@@ -313,106 +325,110 @@ export default function SessionDetailPage() {
                   </div>
                   {selectedExId && (
                     <p className="text-xs text-primary">
-                      Selected: {allExercises.find((e) => e.id === selectedExId)?.name}
+                      Selected:{" "}
+                      {allExercises.find((e) => e.id === selectedExId)?.name}
                     </p>
                   )}
                 </div>
 
-              {/* Prescription */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Sets</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 4"
-                    value={sets}
-                    onChange={(e) => setSets(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Reps</Label>
-                  <Input
-                    placeholder="e.g. 5 or 8-10"
-                    value={reps}
-                    onChange={(e) => setReps(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label>Weight</Label>
-                    <div className="flex rounded-lg overflow-hidden border border-border text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setUnit("kg")}
-                        className={`px-2 py-0.5 transition-colors tap-none ${
-                          unit === "kg"
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        kg
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setUnit("lb")}
-                        className={`px-2 py-0.5 transition-colors tap-none ${
-                          unit === "lb"
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        lb
-                      </button>
-                    </div>
+                {/* Prescription */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Sets</Label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 4"
+                      value={sets}
+                      onChange={(e) => setSets(e.target.value)}
+                    />
                   </div>
-                  <Input
-                    type="number"
-                    placeholder={unit === "kg" ? "e.g. 100" : "e.g. 225"}
-                    value={weightKg}
-                    onChange={(e) => setWeightKg(e.target.value)}
-                  />
+                  <div className="space-y-1.5">
+                    <Label>Reps</Label>
+                    <Input
+                      placeholder="e.g. 5 or 8-10"
+                      value={reps}
+                      onChange={(e) => setReps(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label>Weight</Label>
+                      <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setUnit("kg")}
+                          className={`px-2 py-0.5 transition-colors tap-none ${
+                            unit === "kg"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          kg
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUnit("lb")}
+                          className={`px-2 py-0.5 transition-colors tap-none ${
+                            unit === "lb"
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          lb
+                        </button>
+                      </div>
+                    </div>
+                    <Input
+                      type="number"
+                      placeholder={unit === "kg" ? "e.g. 100" : "e.g. 225"}
+                      value={weightKg}
+                      onChange={(e) => setWeightKg(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>RPE</Label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 8"
+                      value={rpe}
+                      onChange={(e) => setRpe(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <Label>Rest (seconds)</Label>
+                    <Input
+                      type="number"
+                      placeholder="e.g. 180"
+                      value={rest}
+                      onChange={(e) => setRest(e.target.value)}
+                    />
+                  </div>
                 </div>
+
                 <div className="space-y-1.5">
-                  <Label>RPE</Label>
+                  <Label>Notes</Label>
                   <Input
-                    type="number"
-                    placeholder="e.g. 8"
-                    value={rpe}
-                    onChange={(e) => setRpe(e.target.value)}
+                    placeholder="Cues, tempo, etc."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1.5 col-span-2">
-                  <Label>Rest (seconds)</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g. 180"
-                    value={rest}
-                    onChange={(e) => setRest(e.target.value)}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="is_warmup"
+                    className="h-4 w-4"
+                    checked={isWarmup}
+                    onChange={(e) => setIsWarmup(e.target.checked)}
                   />
+                  <Label
+                    htmlFor="is_warmup"
+                    className="font-normal text-muted-foreground"
+                  >
+                    Warmup set
+                  </Label>
                 </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Notes</Label>
-                <Input
-                  placeholder="Cues, tempo, etc."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_warmup"
-                  className="h-4 w-4"
-                  checked={isWarmup}
-                  onChange={(e) => setIsWarmup(e.target.checked)}
-                />
-                <Label htmlFor="is_warmup" className="font-normal text-muted-foreground">
-                  Warmup set
-                </Label>
-              </div>
 
                 <Button
                   type="button"
@@ -430,60 +446,122 @@ export default function SessionDetailPage() {
 
       {/* Edit exercise dialog */}
       {isAdmin && (
-      <Dialog open={!!editTarget} onOpenChange={(o) => { if (!o) setEditTarget(null); }}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit: {editTarget?.exercise.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Sets</Label>
-                <Input type="number" placeholder="e.g. 4" value={editSets} onChange={(e) => setEditSets(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Reps</Label>
-                <Input placeholder="e.g. 5 or 8-10" value={editReps} onChange={(e) => setEditReps(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label>Weight</Label>
-                  <div className="flex rounded-lg overflow-hidden border border-border text-xs">
-                    <button type="button" onClick={() => {
-                      if (editUnit === "lb" && editWeight) {
-                        setEditWeight((Math.round(parseFloat(editWeight) * 0.453592 * 10) / 10).toString());
-                      }
-                      setEditUnit("kg");
-                    }} className={`px-2 py-0.5 transition-colors tap-none ${editUnit === "kg" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>kg</button>
-                    <button type="button" onClick={() => {
-                      if (editUnit === "kg" && editWeight) {
-                        setEditWeight((Math.round(parseFloat(editWeight) * 2.20462 * 10) / 10).toString());
-                      }
-                      setEditUnit("lb");
-                    }} className={`px-2 py-0.5 transition-colors tap-none ${editUnit === "lb" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>lb</button>
-                  </div>
+        <Dialog
+          open={!!editTarget}
+          onOpenChange={(o) => {
+            if (!o) setEditTarget(null);
+          }}
+        >
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit: {editTarget?.exercise.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Sets</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 4"
+                    value={editSets}
+                    onChange={(e) => setEditSets(e.target.value)}
+                  />
                 </div>
-                <Input type="number" placeholder={editUnit === "kg" ? "e.g. 100" : "e.g. 225"} value={editWeight} onChange={(e) => setEditWeight(e.target.value)} />
+                <div className="space-y-1.5">
+                  <Label>Reps</Label>
+                  <Input
+                    placeholder="e.g. 5 or 8-10"
+                    value={editReps}
+                    onChange={(e) => setEditReps(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label>Weight</Label>
+                    <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editUnit === "lb" && editWeight) {
+                            setEditWeight(
+                              (
+                                Math.round(
+                                  parseFloat(editWeight) * 0.453592 * 10,
+                                ) / 10
+                              ).toString(),
+                            );
+                          }
+                          setEditUnit("kg");
+                        }}
+                        className={`px-2 py-0.5 transition-colors tap-none ${editUnit === "kg" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        kg
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editUnit === "kg" && editWeight) {
+                            setEditWeight(
+                              (
+                                Math.round(
+                                  parseFloat(editWeight) * 2.20462 * 10,
+                                ) / 10
+                              ).toString(),
+                            );
+                          }
+                          setEditUnit("lb");
+                        }}
+                        className={`px-2 py-0.5 transition-colors tap-none ${editUnit === "lb" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        lb
+                      </button>
+                    </div>
+                  </div>
+                  <Input
+                    type="number"
+                    placeholder={editUnit === "kg" ? "e.g. 100" : "e.g. 225"}
+                    value={editWeight}
+                    onChange={(e) => setEditWeight(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>RPE</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 8"
+                    value={editRpe}
+                    onChange={(e) => setEditRpe(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <Label>Rest (seconds)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 180"
+                    value={editRest}
+                    onChange={(e) => setEditRest(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label>RPE</Label>
-                <Input type="number" placeholder="e.g. 8" value={editRpe} onChange={(e) => setEditRpe(e.target.value)} />
+                <Label>Coach Notes</Label>
+                <Input
+                  placeholder="Cues, tempo, etc."
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                />
               </div>
-              <div className="space-y-1.5 col-span-2">
-                <Label>Rest (seconds)</Label>
-                <Input type="number" placeholder="e.g. 180" value={editRest} onChange={(e) => setEditRest(e.target.value)} />
-              </div>
+              <Button
+                type="button"
+                className="w-full"
+                loading={updating}
+                onClick={handleUpdate}
+              >
+                Save Changes
+              </Button>
             </div>
-            <div className="space-y-1.5">
-              <Label>Coach Notes</Label>
-              <Input placeholder="Cues, tempo, etc." value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
-            </div>
-            <Button type="button" className="w-full" loading={updating} onClick={handleUpdate}>
-              Save Changes
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
       )}
 
       <Dialog
@@ -496,7 +574,8 @@ export default function SessionDetailPage() {
           <DialogHeader>
             <DialogTitle>Remove exercise?</DialogTitle>
             <DialogDescription>
-              {removeTarget?.exercise.name} will be removed from this program session.
+              {removeTarget?.exercise.name} will be removed from this program
+              session.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-row gap-2">
@@ -570,7 +649,9 @@ export default function SessionDetailPage() {
         {session.exercises.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-8 text-center">
             <Dumbbell className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground">No exercises in this session.</p>
+            <p className="text-muted-foreground">
+              No exercises in this session.
+            </p>
             {isAdmin ? (
               <p className="text-sm text-muted-foreground mt-1">
                 Tap &quot;Add Exercise&quot; to build this session.
@@ -583,29 +664,39 @@ export default function SessionDetailPage() {
           </div>
         ) : (
           session.exercises.map((se, idx) => {
+            const prescription = readPrescription(se.prescription);
             const weightKg = se.target_weight_kg;
-            const weightDisplay = weightKg != null
-              ? unit === "lb"
-                ? `${Math.round(weightKg * 2.20462 * 10) / 10} lb`
-                : `${weightKg} kg`
-              : null;
+            const weightDisplay =
+              weightKg != null
+                ? unit === "lb"
+                  ? `${Math.round(weightKg * 2.20462 * 10) / 10} lb`
+                  : `${weightKg} kg`
+                : null;
 
-            const restDisplay = se.rest_seconds != null
-              ? se.rest_seconds >= 60
-                ? `${Math.floor(se.rest_seconds / 60)} min${se.rest_seconds % 60 ? ` ${se.rest_seconds % 60} sec` : ""}`
-                : `${se.rest_seconds} sec`
-              : null;
+            const restDisplay =
+              se.rest_seconds != null
+                ? se.rest_seconds >= 60
+                  ? `${Math.floor(se.rest_seconds / 60)} min${se.rest_seconds % 60 ? ` ${se.rest_seconds % 60} sec` : ""}`
+                  : `${se.rest_seconds} sec`
+                : null;
 
             return (
-              <div key={se.id} className="rounded-xl border border-border bg-card overflow-hidden">
+              <div
+                key={se.id}
+                className="rounded-xl border border-border bg-card overflow-hidden"
+              >
                 {/* Exercise header */}
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-accent/20">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/20 text-primary text-xs font-bold">
                     {idx + 1}
                   </div>
-                  <p className="text-sm font-semibold flex-1">{se.exercise.name}</p>
+                  <p className="text-sm font-semibold flex-1">
+                    {prescription?.name ?? se.exercise.name}
+                  </p>
                   {se.is_warmup && (
-                    <Badge variant="secondary" className="text-[10px] py-0">Warmup</Badge>
+                    <Badge variant="secondary" className="text-[10px] py-0">
+                      Warmup
+                    </Badge>
                   )}
                   {isAdmin && (
                     <>
@@ -633,30 +724,53 @@ export default function SessionDetailPage() {
                 {/* Prescription grid */}
                 <div className="grid grid-cols-2 divide-x divide-y divide-border">
                   <div className="px-4 py-3">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Sets × Reps</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                      {prescription?.dose.kind === "hold"
+                        ? "Sets × Hold time"
+                        : "Sets × Reps"}
+                    </p>
                     <p className="text-sm font-semibold font-num">
-                      {se.target_sets && se.target_reps
-                        ? `${se.target_sets} × ${se.target_reps}`
-                        : se.target_sets
-                        ? `${se.target_sets} sets`
-                        : "—"}
+                      {prescription
+                        ? `${prescription.sets} × ${doseLabel(prescription.dose)}`
+                        : se.target_sets && se.target_reps
+                          ? `${se.target_sets} × ${se.target_reps}`
+                          : se.target_sets
+                            ? `${se.target_sets} sets`
+                            : "—"}
                     </p>
                   </div>
                   <div className="px-4 py-3">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Target Weight</p>
-                    <p className={`text-sm font-semibold font-num ${weightDisplay ? "text-foreground" : "text-muted-foreground"}`}>
-                      {weightDisplay ?? "Not set"}
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                      Load / Assistance
+                    </p>
+                    <p
+                      className={`text-sm font-semibold ${weightDisplay || prescription ? "text-foreground" : "text-muted-foreground"}`}
+                    >
+                      {prescription?.loadOrAssistance ??
+                        weightDisplay ??
+                        "Not set"}
                     </p>
                   </div>
                   <div className="px-4 py-3">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">RPE Target</p>
-                    <p className={`text-sm font-semibold font-num ${se.target_rpe != null ? "text-primary" : "text-muted-foreground"}`}>
-                      {se.target_rpe != null ? `RPE ${se.target_rpe} / 10` : "Not set"}
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                      Effort Target
+                    </p>
+                    <p
+                      className={`text-sm font-semibold ${se.target_rpe != null || prescription ? "text-primary" : "text-muted-foreground"}`}
+                    >
+                      {prescription?.effort ??
+                        (se.target_rpe != null
+                          ? `RPE ${se.target_rpe} / 10`
+                          : "Not set")}
                     </p>
                   </div>
                   <div className="px-4 py-3">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Rest Between Sets</p>
-                    <p className={`text-sm font-semibold font-num ${restDisplay ? "text-foreground" : "text-muted-foreground"}`}>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                      Rest Between Sets
+                    </p>
+                    <p
+                      className={`text-sm font-semibold font-num ${restDisplay ? "text-foreground" : "text-muted-foreground"}`}
+                    >
                       {restDisplay ?? "Not set"}
                     </p>
                   </div>
@@ -665,7 +779,9 @@ export default function SessionDetailPage() {
                 {/* Coach notes */}
                 {se.notes && (
                   <div className="px-4 py-2.5 border-t border-border bg-accent/10">
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Coach Notes</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                      Coach Notes
+                    </p>
                     <p className="text-xs text-foreground">{se.notes}</p>
                   </div>
                 )}
