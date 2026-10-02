@@ -115,7 +115,7 @@ function validationMessage(
             max: "maximum dose",
             range: "rep range",
             seconds: "hold time",
-            restSeconds: "rest seconds",
+            restSeconds: "rest minutes",
             loadOrAssistance: "load or assistance",
             effort: "effort",
             progression: "progression",
@@ -124,7 +124,7 @@ function validationMessage(
             notes: "notes",
           };
           labels.push(names[field] ?? "prescription");
-          return `${labels.join(", ")}: ${issue.message ?? "Check this field"}`;
+          return `${labels.join(", ")}: ${field === "restSeconds" ? "Enter 0.25–10 min." : issue.message ?? "Check this field"}`;
         })
         .join(" · ");
     }

@@ -5,6 +5,7 @@ import { useRestTimer } from "@/lib/hooks/use-workout-timer";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { formatRestMinutes } from "@/lib/rest-minutes";
 
 interface RestTimerProps {
   defaultSeconds?: number;
@@ -47,7 +48,7 @@ export function RestTimer({ defaultSeconds = 180 }: RestTimerProps) {
               onClick={() => start(s)}
               className="flex-1 min-w-[48px] rounded-lg border border-border bg-background py-1.5 text-xs font-medium hover:bg-accent hover:border-primary/40 transition-colors tap-none"
             >
-              {s >= 60 ? `${s / 60}m` : `${s}s`}
+              {formatRestMinutes(s)}
             </button>
           ))}
         </div>

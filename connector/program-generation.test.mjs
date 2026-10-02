@@ -31,15 +31,32 @@ test("generates all requested weeks separately and preserves distinct doses, var
   assert.equal(draft.weeks[3].days[1].exercises.length, 3);
   assert.equal(draft.weeks[0].days[0].exercises[2].dose.kind, "hold");
   assert.match(calls[0].messages[1].content, /Actual completed sets: none/);
+  assert.match(calls[0].messages[1].content, /2 min = 120/);
   assert.match(calls[1].messages[1].content, /PREVIOUS DRAFT WEEK/);
   assert.equal(calls[3].format.properties.week.properties.number.const, 4);
 });
 
 test("bounded repair fixes an omitted day without fabricating it in code", async () => {
-  let count = 0;
+  let count = 0; const prompts = [];
   const draft = await generateProgram({ program: { ...request, scope: { ...request.scope, weekCount: 1 } }, system: "rules", signal: new AbortController().signal,
-    chat: async () => response(week(1, ++count === 1 ? 1 : 2)) });
+    chat: async (body) => { prompts.push(body.messages[1].content); return response(week(1, ++count === 1 ? 1 : 2)); } });
   assert.equal(count, 2); assert.equal(draft.weeks[0].days.length, 2);
+  assert.match(prompts[1], /PREVIOUS INVALID WEEK/);
+  assert.match(prompts[1], /Missing training day/);
+});
+
+test("bounded repair explains a bare effort target and keeps the coach's other groups", async () => {
+  const prompts = []; let count = 0;
+  const draft = await generateProgram({ program: { ...request, scope: { ...request.scope, weekCount: 1 } }, system: "rules", signal: new AbortController().signal,
+    chat: async (body) => {
+      prompts.push(body.messages[1].content);
+      const value = week(1); if (++count === 1) value.week.days[0].exercises[1].effort = "RPE ";
+      return response(value);
+    } });
+  assert.equal(count, 2);
+  assert.equal(draft.weeks[0].days[0].exercises[1].effort, "RPE 7");
+  assert.match(prompts[1], /The effort target is missing its value/);
+  assert.match(prompts[1], /"effort":"RPE "/);
 });
 
 test("duplicate days, missing exercise dose and truncation fail rather than returning a partial plan", async () => {
@@ -51,7 +68,7 @@ test("duplicate days, missing exercise dose and truncation fail rather than retu
     let calls = 0;
     await assert.rejects(generateProgram({ program: request, signal: new AbortController().signal, system: "rules",
       chat: async () => { calls++; const w = week(1); mutation(w); return response(w); } }), /complete week 1/);
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
   }
   await assert.rejects(generateProgram({ program: request, signal: new AbortController().signal, system: "rules",
     chat: async () => response(week(1), { done_reason: "length" }) }), /complete week 1/);

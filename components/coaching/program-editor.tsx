@@ -5,6 +5,7 @@ import { Copy, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { restMinutes, restSeconds } from "@/lib/rest-minutes";
 import type { WorkflowProgramDraft } from "@/lib/coach/workflow-schema";
 
 type Exercise =
@@ -87,6 +88,47 @@ function NumberField({
         onChange={(event) =>
           onChange(event.target.value === "" ? 0 : Number(event.target.value))
         }
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+function RestMinutesField({
+  seconds,
+  onChange,
+  disabled,
+}: {
+  seconds: number;
+  onChange: (seconds: number) => void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? (seconds > 0 ? String(restMinutes(seconds)) : "");
+
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium">
+        Rest · minutes
+      </label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="decimal"
+        min={0.25}
+        max={10}
+        step={0.01}
+        value={value}
+        onBlur={() => setDraft(null)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const minutes = Number(next);
+          onChange(
+            next !== "" && Number.isFinite(minutes) ? restSeconds(minutes) : 0,
+          );
+        }}
         disabled={disabled}
       />
     </div>
@@ -238,11 +280,8 @@ function ExerciseEditor({
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
-        <NumberField
-          label="Rest · seconds"
-          value={exercise.restSeconds}
-          min={15}
-          max={600}
+        <RestMinutesField
+          seconds={exercise.restSeconds}
           onChange={(restSeconds) => update({ restSeconds })}
           disabled={disabled}
         />

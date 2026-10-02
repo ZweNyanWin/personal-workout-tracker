@@ -27,6 +27,7 @@ import {
 import { ArrowLeft, Plus, Trash2, Dumbbell, Pencil, Play } from "lucide-react";
 import type { Exercise } from "@/types";
 import { doseLabel, readPrescription } from "@/components/logging/prescription";
+import { formatRestMinutes, restMinutes, restSeconds } from "@/lib/rest-minutes";
 
 type SessionExerciseRow = {
   id: string;
@@ -130,6 +131,11 @@ export default function SessionDetailPage() {
       toast.error("Select an exercise");
       return;
     }
+    const restInSeconds = rest.trim() ? restSeconds(Number(rest)) : undefined;
+    if (restInSeconds !== undefined && (!Number.isFinite(restInSeconds) || restInSeconds < 1)) {
+      toast.error("Enter a rest time greater than zero in minutes");
+      return;
+    }
     startSave(async () => {
       const rawWeight = weightKg ? parseFloat(weightKg) : undefined;
       const weightInKg =
@@ -144,7 +150,7 @@ export default function SessionDetailPage() {
         target_reps: reps || undefined,
         target_rpe: rpe ? parseFloat(rpe) : undefined,
         target_weight_kg: weightInKg,
-        rest_seconds: rest ? parseInt(rest) : undefined,
+        rest_seconds: restInSeconds,
         notes: notes || undefined,
         is_warmup: isWarmup,
       });
@@ -180,7 +186,7 @@ export default function SessionDetailPage() {
     setEditSets(se.target_sets?.toString() ?? "");
     setEditReps(se.target_reps ?? "");
     setEditRpe(se.target_rpe?.toString() ?? "");
-    setEditRest(se.rest_seconds?.toString() ?? "");
+    setEditRest(se.rest_seconds != null ? String(restMinutes(se.rest_seconds)) : "");
     setEditNotes(se.notes ?? "");
     // show existing weight in kg by default
     setEditUnit("kg");
@@ -189,6 +195,11 @@ export default function SessionDetailPage() {
 
   function handleUpdate() {
     if (!editTarget) return;
+    const restInSeconds = editRest.trim() ? restSeconds(Number(editRest)) : null;
+    if (restInSeconds !== null && (!Number.isFinite(restInSeconds) || restInSeconds < 1)) {
+      toast.error("Enter a rest time greater than zero in minutes");
+      return;
+    }
     startUpdate(async () => {
       const rawWeight = editWeight ? parseFloat(editWeight) : null;
       const weightInKg =
@@ -203,7 +214,7 @@ export default function SessionDetailPage() {
         target_reps: editReps || null,
         target_rpe: editRpe ? parseFloat(editRpe) : null,
         target_weight_kg: weightInKg,
-        rest_seconds: editRest ? parseInt(editRest) : null,
+        rest_seconds: restInSeconds,
         notes: editNotes || null,
       });
       if (result.success) {
@@ -395,10 +406,13 @@ export default function SessionDetailPage() {
                     />
                   </div>
                   <div className="space-y-1.5 col-span-2">
-                    <Label>Rest (seconds)</Label>
+                    <Label>Rest (minutes)</Label>
                     <Input
                       type="number"
-                      placeholder="e.g. 180"
+                      inputMode="decimal"
+                      min={0.01}
+                      step={0.01}
+                      placeholder="e.g. 1.5"
                       value={rest}
                       onChange={(e) => setRest(e.target.value)}
                     />
@@ -534,10 +548,13 @@ export default function SessionDetailPage() {
                   />
                 </div>
                 <div className="space-y-1.5 col-span-2">
-                  <Label>Rest (seconds)</Label>
+                  <Label>Rest (minutes)</Label>
                   <Input
                     type="number"
-                    placeholder="e.g. 180"
+                    inputMode="decimal"
+                    min={0.01}
+                    step={0.01}
+                    placeholder="e.g. 1.5"
                     value={editRest}
                     onChange={(e) => setEditRest(e.target.value)}
                   />
@@ -675,9 +692,7 @@ export default function SessionDetailPage() {
 
             const restDisplay =
               se.rest_seconds != null
-                ? se.rest_seconds >= 60
-                  ? `${Math.floor(se.rest_seconds / 60)} min${se.rest_seconds % 60 ? ` ${se.rest_seconds % 60} sec` : ""}`
-                  : `${se.rest_seconds} sec`
+                ? formatRestMinutes(se.rest_seconds)
                 : null;
 
             return (

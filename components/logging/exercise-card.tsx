@@ -8,6 +8,7 @@ import { SetRow } from "./set-row";
 import { cn } from "@/lib/utils";
 import type { WorkoutLogExerciseWithSets, WorkoutLogSet } from "@/types";
 import { doseLabel, readPrescription } from "./prescription";
+import { formatRestMinutes } from "@/lib/rest-minutes";
 
 interface ExerciseCardProps {
   logExercise: WorkoutLogExerciseWithSets;
@@ -116,9 +117,7 @@ export function ExerciseCard({ logExercise, onSetsChange }: ExerciseCardProps) {
             {planned?.rest_seconds && (
               <span className="text-xs text-muted-foreground">
                 ·{" "}
-                {planned.rest_seconds >= 60
-                  ? `${Math.round(planned.rest_seconds / 60)}m rest`
-                  : `${planned.rest_seconds}s rest`}
+                {formatRestMinutes(planned.rest_seconds)} rest
               </span>
             )}
           </div>
