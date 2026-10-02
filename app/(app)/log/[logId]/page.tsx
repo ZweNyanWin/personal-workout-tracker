@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   CheckCircle2,
-  X,
   Clock,
   ArrowLeft,
   Dumbbell,
@@ -34,6 +33,9 @@ import {
   relativeDate,
 } from "@/lib/utils";
 import type { WorkoutLogFull, WorkoutLogSet } from "@/types";
+import { completionSets, workoutCompletionSetsSchema, workoutReturnPath } from "@/lib/workout-completion";
+import { doseLabel, readPrescription } from "@/components/logging/prescription";
+import { formatRestMinutes } from "@/lib/rest-minutes";
 
 export default function WorkoutLogPage({
   params,
@@ -42,7 +44,8 @@ export default function WorkoutLogPage({
 }) {
   const { logId } = use(params);
   const router = useRouter();
-  const [log, setLog] = useState<WorkoutLogFull | null>(null);
+  const [log, setLog] = useState<(WorkoutLogFull & { canEdit?: boolean }) | null>(null);
+  const [returnTo, setReturnTo] = useState("/history");
   const [loading, setLoading] = useState(true);
   const [finishOpen, setFinishOpen] = useState(false);
   const [notes, setNotes] = useState("");
@@ -56,7 +59,10 @@ export default function WorkoutLogPage({
     let cancelled = false;
     getWorkoutLog(logId)
       .then((data) => {
-        if (!cancelled) setLog(data);
+        if (!cancelled) {
+          setReturnTo(workoutReturnPath(new URLSearchParams(window.location.search).get("returnTo")));
+          setLog(data);
+        }
       })
       .catch(() => {
         if (!cancelled) toast.error("Could not load this workout");
@@ -81,6 +87,11 @@ export default function WorkoutLogPage({
 
   function handleFinish() {
     if (!log) return;
+    const measured = workoutCompletionSetsSchema.safeParse(completionSets(log.exercises));
+    if (!measured.success) {
+      toast.error(measured.error.issues[0]?.message ?? "Check your entered set values");
+      return;
+    }
     const parsedBodyweight = bodyweight.trim() ? Number(bodyweight) : undefined;
     if (
       parsedBodyweight !== undefined &&
@@ -98,6 +109,7 @@ export default function WorkoutLogPage({
         notes,
         parsedBodyweight,
         energyRating ?? undefined,
+        measured.data,
       );
       if (result.success) {
         toast.success("Workout completed");
@@ -135,7 +147,7 @@ export default function WorkoutLogPage({
     "bg-primary/20 text-primary border-primary/30";
 
   // ─── Read-only view for completed workouts ────────────────────
-  if (log.status === "completed") {
+  if (log.status !== "in_progress" || log.canEdit === false) {
     const totalVolume = log.exercises.reduce(
       (acc, ex) =>
         acc +
@@ -157,10 +169,12 @@ export default function WorkoutLogPage({
         {/* Header */}
         <div className="sticky top-0 z-10 flex h-14 items-center gap-3 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
           <button
-            onClick={() => router.back()}
-            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors tap-none"
+            onClick={() => router.push(returnTo)}
+            aria-label={returnTo.startsWith("/admin/members/") || returnTo.includes("memberId=") ? "Back to client workouts" : "Back to workout history"}
+            className="flex h-9 items-center justify-center gap-1.5 rounded-lg px-2 hover:bg-accent transition-colors tap-none"
           >
             <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm">Back</span>
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -171,7 +185,7 @@ export default function WorkoutLogPage({
                 variant="secondary"
                 className="text-[10px] text-success border-success/30"
               >
-                Done
+                {log.status === "completed" ? "Done" : log.status === "skipped" ? "Skipped" : "In progress"}
               </Badge>
             </div>
           </div>
@@ -224,6 +238,7 @@ export default function WorkoutLogPage({
           ) : (
             <div className="space-y-3">
               {log.exercises.map((ex) => {
+                const planned = readPrescription(ex.planned?.prescription);
                 const completedSetsList = (ex.sets ?? []).filter(
                   (s) => s.is_completed,
                 );
@@ -233,11 +248,18 @@ export default function WorkoutLogPage({
                     className="rounded-xl border border-border bg-card p-4"
                   >
                     <p className="text-sm font-semibold mb-3">
-                      {ex.exercise?.name ?? "Exercise"}
+                      {planned?.name ?? ex.exercise?.name ?? "Exercise"}
                     </p>
+                    {ex.planned && (
+                      <p className="mb-3 rounded-lg bg-accent/40 p-2 text-xs text-muted-foreground">
+                        {ex.planned_snapshot ? "Recorded plan" : "Current linked plan · original prescription was not recorded"}: {planned ? `${planned.sets} × ${doseLabel(planned.dose)} · ${planned.effort}`
+                          : `${ex.planned.target_sets ?? "—"} × ${ex.planned.target_reps ?? "—"}${ex.planned.target_rpe ? ` · RPE ${ex.planned.target_rpe}` : ""}`}
+                        {ex.planned.rest_seconds ? ` · ${formatRestMinutes(ex.planned.rest_seconds, planned?.restRangeMinutes)} rest` : ""}
+                      </p>
+                    )}
                     {completedSetsList.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
-                        No sets completed
+                        Performed sets were not recorded.
                       </p>
                     ) : (
                       <div className="space-y-1.5">
@@ -251,7 +273,7 @@ export default function WorkoutLogPage({
                           </span>
                           <span>RPE</span>
                         </div>
-                        {(ex.sets ?? []).map((set, i) => (
+                        {completedSetsList.map((set) => (
                           <div
                             key={set.id}
                             className={`grid grid-cols-4 text-sm px-1 py-1 rounded-lg font-num ${
@@ -259,7 +281,7 @@ export default function WorkoutLogPage({
                             }`}
                           >
                             <span className="text-muted-foreground">
-                              {i + 1}
+                              {set.set_number}
                             </span>
                             <span>
                               {set.weight_kg != null
@@ -329,11 +351,12 @@ export default function WorkoutLogPage({
         <div className="flex items-center gap-3 px-4 py-3">
           <button
             type="button"
-            aria-label="Exit workout"
-            onClick={() => router.push("/dashboard")}
-            className="text-muted-foreground hover:text-foreground tap-none"
+            aria-label="Back to your program"
+            onClick={() => router.push("/workout")}
+            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground tap-none"
           >
-            <X className="h-5 w-5" />
+            <ArrowLeft className="h-5 w-5" />
+            <span className="text-sm">Back</span>
           </button>
 
           <div className="flex-1 min-w-0">
@@ -398,6 +421,9 @@ export default function WorkoutLogPage({
             <DialogTitle>Finish Workout</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Finish saves every entered set, including sets you haven&apos;t checked off. Blank sets stay unrecorded.
+            </p>
             <div className="space-y-1.5">
               <Label>How did you feel?</Label>
               <div className="flex gap-2">

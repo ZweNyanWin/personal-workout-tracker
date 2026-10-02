@@ -32,7 +32,6 @@ type ProgramSession = NonNullable<ProgramBlock["sessions"]>[number];
 
 export default function ProgramDetailPage() {
   const { programId } = useParams<{ programId: string }>();
-  const router = useRouter();
   const [program, setProgram] = useState<ProgramDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
@@ -93,14 +92,13 @@ export default function ProgramDetailPage() {
     <div className="flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 flex h-14 items-center gap-3 px-4 border-b border-border bg-background/95 backdrop-blur-sm">
-        <button
-          type="button"
-          aria-label="Go back"
-          onClick={() => router.back()}
+        <Link
+          href="/admin/programs"
+          aria-label="Back to programs"
           className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent transition-colors tap-none"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
+        </Link>
         <div className="flex-1 min-w-0">
           <h1 className="text-base font-semibold truncate">{program.title}</h1>
           <p className="text-xs text-muted-foreground">

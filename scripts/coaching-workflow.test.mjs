@@ -10,7 +10,7 @@ const base = {
   progression: "Coach reviews progression", regression: "Coach reviews adjustments",
   weeks: [{ number: 5, focus: "Technique", days: [{ number: 1, title: "Upper", warmup: "Light ramp sets", exercises: [
     { name: "Paused bench press", sets: 1, dose: { kind: "reps", range: { min: 1, max: 1 }, perSide: false }, loadOrAssistance: "100 lb", effort: "RPE 7", restSeconds: 180, notes: "Top single" },
-    { name: "Paused bench press", sets: 3, dose: { kind: "reps", range: { min: 5, max: 5 }, perSide: false }, loadOrAssistance: "80 lb", effort: "2 RIR", restSeconds: 120, notes: "Backdowns" },
+    { name: "Paused bench press", sets: 3, dose: { kind: "reps", range: { min: 5, max: 5 }, perSide: false }, loadOrAssistance: "80 lb", effort: "RPE 8", restSeconds: 120, notes: "Backdowns" },
     { name: "Tuck front lever", sets: 3, dose: { kind: "hold", seconds: { min: 8, max: 12 } }, loadOrAssistance: "Bodyweight", effort: "End before position loss", restSeconds: 120 },
   ] }] }],
 };
@@ -21,6 +21,18 @@ test("approved drafts retain exact variants, separate dose groups, units and hol
   assert.equal(result.weeks[0].days[0].exercises.length, 3);
   assert.equal(result.weeks[0].days[0].exercises[0].loadOrAssistance, "100 lb");
   assert.equal(result.weeks[0].days[0].exercises[2].dose.kind, "hold");
+});
+
+test("main barbell lifts reject ranged reps, RIR-only targets, and bodyweight-only loads", () => {
+  for (const [change, expected] of [
+    [(item) => { item.dose.range = { min: 3, max: 6 }; }, /exact rep target/],
+    [(item) => { item.effort = "2 RIR"; }, /numeric RPE/],
+    [(item) => { item.loadOrAssistance = "Bodyweight only"; }, /bodyweight alone/],
+  ]) {
+    const draft = structuredClone(base);
+    change(draft.weeks[0].days[0].exercises[0]);
+    assert.throws(() => validateWorkflowProgramDraft(draft, scope), expected);
+  }
 });
 
 test("suggested rest range survives approval and must keep its timer default", () => {

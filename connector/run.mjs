@@ -63,6 +63,8 @@ export function validateConfig(value) {
   }
   if (typeof value.vercelScope !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(value.vercelScope)) throw new Error('Invalid Vercel scope.');
   if (typeof value.vercelProjectId !== 'string' || !/^prj_[a-zA-Z0-9]+$/.test(value.vercelProjectId)) throw new Error('Invalid Vercel project.');
+  if (value.referenceOwnerId !== undefined && (typeof value.referenceOwnerId !== 'string'
+    || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.referenceOwnerId))) throw new Error('Invalid local reference owner.');
   let appUrl;
   try { appUrl = new URL(value.appUrl); } catch { throw new Error('Invalid PowerBuild app URL.'); }
   if (appUrl.protocol !== 'https:' || !appUrl.hostname.endsWith('.vercel.app') || appUrl.username || appUrl.password || appUrl.port || appUrl.search || appUrl.hash || appUrl.pathname !== '/') {
@@ -392,7 +394,8 @@ async function main() {
     if (await portIsOpen()) throw new Error('Port 11435 is already occupied. The launcher will not stop that process.');
     console.log('Starting the Mac AI gateway and checking Ollama…');
     const gateway = child(process.execPath, [path.join(config.projectRoot, 'connector', 'gateway.mjs')], {
-      env: { ...process.env, POWERBUILD_GATEWAY_TOKEN: config.token, POWERBUILD_GATEWAY_PORT: '11435' },
+      env: { ...process.env, POWERBUILD_GATEWAY_TOKEN: config.token, POWERBUILD_GATEWAY_PORT: '11435',
+        POWERBUILD_REFERENCE_OWNER_ID: config.referenceOwnerId ?? '' },
     });
     gateway.stdout.resume();
     gateway.stderr.resume();

@@ -16,6 +16,10 @@ export default function CoachingWorkflowPreview() {
   content.title = "Technique block · authored preview";
   // Synthetic layout case for Tommy's optional high-effort rest suggestion.
   const restExample = content.weeks[0].days[0].exercises[0];
+  restExample.name = "Bench Press";
+  restExample.sets = 3;
+  restExample.dose = { kind: "reps", range: { min: 5, max: 5 }, perSide: false };
+  restExample.loadOrAssistance = "Choose a barbell load for the prescribed RPE";
   restExample.effort = "RPE 8";
   restExample.restSeconds = 300;
   restExample.restRangeMinutes = { min: 4, max: 6 };

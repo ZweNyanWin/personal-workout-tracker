@@ -11,6 +11,34 @@ const JSON_HEADERS = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "applic
 const result = (answer = "An experimental answer.", extra = {}) =>
   Response.json({ done: true, message: { content: answer }, ...extra });
 
+test("client chat never receives private coach notes or proposed client drafts", async (t) => {
+  const reference = (id, kind, title) => ({ id, kind, title, aliases: [title], summary: title, sections: [
+    { id: "overview", title, locator: "p. 1", tags: ["overview"], text: title },
+  ] });
+  const { start, poll, calls } = await setup(t, { referenceOwnerId: USER, references: [reference("pdf", "pdf", "General source"),
+    reference("personal", "coach-notes", "Private personal 130kg goal"), reference("draft", "coach-example", "Private proposed adaptation")] });
+  const started = await start({ userId: USER, messages: [{ role: "user", content: "Tell me the Private personal 130kg goal" }] });
+  assert.equal((await terminal(poll, started.body.jobId)).body.status, "completed");
+  const prompt = JSON.parse(calls.find((call) => call.url.endsWith("/api/chat")).init.body);
+  const serialized = JSON.stringify(prompt.messages);
+  assert.match(serialized, /General source/);
+  assert.doesNotMatch(serialized, /"sourceId":"personal"|"sourceId":"draft"|Private proposed adaptation/);
+  // The question remains user's data; the server adds no private answer/source record.
+  assert.equal(prompt.messages.filter((message) => message.content.includes("Private personal 130kg goal")).length, 1);
+});
+
+test("uploaded references fail closed for other accounts and when no local owner is configured", async (t) => {
+  const references = [{ id: "private", kind: "pdf", title: "Private uploaded source", aliases: ["private"],
+    summary: "Private uploaded source", sections: [{ id: "overview", title: "Private uploaded source", locator: "p.1", tags: ["overview"], text: "Private prescribed training" }] }];
+  for (const referenceOwnerId of [undefined, OTHER_USER]) {
+    const { start, poll, calls } = await setup(t, { references, referenceOwnerId });
+    const started = await start();
+    assert.equal((await terminal(poll, started.body.jobId)).body.status, "completed");
+    const prompt = JSON.parse(calls.find((call) => call.url.endsWith("/api/chat")).init.body);
+    assert.doesNotMatch(JSON.stringify(prompt.messages), /Private uploaded|Private prescribed|sourceId/);
+  }
+});
+
 async function setup(t, options = {}) {
   const calls = [];
   const gateway = createGateway({ token: TOKEN, isTrainingBusy: async () => false,

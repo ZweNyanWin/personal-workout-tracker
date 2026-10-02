@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { ActionResult, SessionExerciseWithExercise, WorkoutLogFull } from "@/types";
+import type { ActionResult, WorkoutLogFull, SessionExerciseWithExercise } from "@/types";
 import { bodyweightSchema, workoutSetUpdateSchema } from "@/lib/validations";
+import { workoutCompletionSetsSchema, type WorkoutCompletionSet } from "@/lib/workout-completion";
 
 // ─── Get dashboard data ───────────────────────────────────────
 export async function getDashboardData() {
@@ -188,109 +189,16 @@ export async function startWorkout(sessionId: string): Promise<ActionResult<stri
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  // Check if there's an existing in-progress workout for this session today
-  const today = new Date().toISOString().split("T")[0];
-  const { data: existing } = await supabase
-    .from("workout_logs")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("session_id", sessionId)
-    .eq("status", "in_progress")
-    .eq("date", today)
-    .limit(1)
-    .maybeSingle();
-
-  if (existing) {
-    return { success: true, data: existing.id };
-  }
-
-  const session = await getSessionWithExercises(sessionId);
-  if (!session) return { success: false, error: "Session not found" };
-
-  const { data: assignment } = await supabase
-    .from("user_program_assignments")
-    .select("id, program_id, current_session_index, is_finite, status")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!assignment || assignment.program_id !== session.program_id) {
-    return { success: false, error: "This session is not in your active program" };
-  }
-
-  const { data: programSessions } = await supabase
-    .from("program_sessions")
-    .select("id")
-    .eq("program_id", assignment.program_id)
-    .order("session_order", { ascending: true });
-
-  const currentSession = programSessions?.length
-    ? programSessions[assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % programSessions.length]
-    : null;
-
-  if (currentSession?.id !== sessionId) {
-    return { success: false, error: "Open your current session to start logging" };
-  }
-
-  // Create workout log
-  const { data: log, error: logError } = await supabase
-    .from("workout_logs")
-    .insert({
-      user_id: user.id,
-      session_id: sessionId,
-      assignment_id: assignment.id,
-      title: session.title,
-      date: today,
-      started_at: new Date().toISOString(),
-      status: "in_progress",
-    })
-    .select("id")
-    .single();
-
-  if (logError || !log) {
-    return { success: false, error: logError?.message ?? "Failed to create workout" };
-  }
-
-  // Pre-populate exercises from session template — batch inserts
-  const sessionExercises = session.exercises as SessionExerciseWithExercise[];
-  if (sessionExercises.length > 0) {
-    const exerciseRows = sessionExercises.map((se) => ({
-      workout_log_id: log.id,
-      exercise_id: se.user_override?.override_exercise_id ?? se.exercise.id,
-      session_exercise_id: se.id,
-      order_index: se.order_index,
-    }));
-
-    const { data: logExercises } = await supabase
-      .from("workout_log_exercises")
-      .insert(exerciseRows)
-      .select("id, session_exercise_id");
-
-    if (logExercises) {
-      const seMap = new Map(sessionExercises.map((se) => [se.id, se]));
-      const allSetRows = logExercises.flatMap((logEx) => {
-        const se = logEx.session_exercise_id
-          ? seMap.get(logEx.session_exercise_id)
-          : undefined;
-        const sets = se?.user_override?.target_sets ?? se?.target_sets ?? 3;
-        return Array.from({ length: sets }, (_, i) => ({
-          log_exercise_id: logEx.id,
-          set_number: i + 1,
-          is_warmup: se?.is_warmup ?? false,
-          is_completed: false,
-        }));
-      });
-      if (allSetRows.length > 0) {
-        await supabase.from("workout_log_sets").insert(allSetRows);
-      }
-    }
-  }
-
-  return { success: true, data: log.id };
+  const { data, error } = await supabase.rpc("start_workout_atomically", {
+    p_session_id: sessionId,
+    p_quick_complete: false,
+  });
+  if (error || !data) return { success: false, error: error?.message ?? "Failed to start workout" };
+  return { success: true, data };
 }
 
 // ─── Get active workout log ───────────────────────────────────
-export async function getWorkoutLog(logId: string): Promise<WorkoutLogFull | null> {
+export async function getWorkoutLog(logId: string): Promise<(WorkoutLogFull & { canEdit: boolean }) | null> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -309,7 +217,20 @@ export async function getWorkoutLog(logId: string): Promise<WorkoutLogFull | nul
     .eq("workout_log_id", logId)
     .order("order_index", { ascending: true });
 
-  if (!logExercises) return { ...log, exercises: [] } as WorkoutLogFull;
+  if (!logExercises) return { ...log, exercises: [], canEdit: false } as WorkoutLogFull & { canEdit: boolean };
+
+  // Older quick completions stored only the session marker. Show its plan as a
+  // clearly labelled outline; these rows are display data, never measured sets.
+  if (!logExercises.length && log.session_id) {
+    const plannedSession = await getSessionWithExercises(log.session_id, log.user_id);
+    const exercises = (plannedSession?.exercises ?? []).map((planned) => ({
+      id: `planned-${planned.id}`, workout_log_id: log.id,
+      exercise_id: planned.exercise_id, session_exercise_id: planned.id,
+      order_index: planned.order_index, notes: null, created_at: log.created_at,
+      exercise: planned.exercise, planned, planned_snapshot: null, sets: [],
+    }));
+    return { ...log, exercises, canEdit: false } as WorkoutLogFull & { canEdit: boolean };
+  }
 
   // Fetch sets for all exercises
   const exerciseIds = logExercises.map((e) => e.id);
@@ -327,12 +248,15 @@ export async function getWorkoutLog(logId: string): Promise<WorkoutLogFull | nul
   }
 
   // Keep the exact approved dose available while logging holds and repetitions.
-  const exercises = logExercises.map((ex) => ({
-    ...ex,
-    sets: setsMap.get(ex.id) ?? [],
-  }));
+  const exercises = logExercises.map((ex) => {
+    const snapshot = ex.planned_snapshot;
+    const recordedPlan = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      ? snapshot as unknown as SessionExerciseWithExercise : null;
+    return { ...ex, planned: recordedPlan ?? ex.planned,
+      exercise: recordedPlan?.exercise ?? ex.exercise, sets: setsMap.get(ex.id) ?? [] };
+  });
 
-  return { ...log, exercises } as WorkoutLogFull;
+  return { ...log, exercises, canEdit: log.user_id === user.id && log.status === "in_progress" } as WorkoutLogFull & { canEdit: boolean };
 }
 
 // ─── Update a single set ──────────────────────────────────────
@@ -399,7 +323,8 @@ export async function finishWorkout(
   logId: string,
   notes?: string,
   bodyweight?: number,
-  energyRating?: number
+  energyRating?: number,
+  completionSets?: WorkoutCompletionSet[]
 ): Promise<ActionResult> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -425,111 +350,23 @@ export async function finishWorkout(
     return { success: false, error: "Energy rating must be between 1 and 5" };
   }
 
-  const { data: log } = await supabase
-    .from("workout_logs")
-    .select("started_at, session_id, assignment_id, status, bodyweight_kg")
-    .eq("id", logId)
-    .eq("user_id", user.id)
-    .single();
+  const parsedSets = workoutCompletionSetsSchema.safeParse(completionSets ?? []);
+  if (!parsedSets.success) return { success: false, error: parsedSets.error.issues[0]?.message ?? "Check your entered set values" };
+  const { error } = await supabase.rpc("complete_workout_atomically", {
+    p_log_id: logId,
+    p_sets: parsedSets.data,
+    p_notes: cleanNotes ?? null,
+    p_bodyweight: bodyweight ?? null,
+    p_energy: energyRating ?? null,
+  });
+  if (error) return { success: false, error: error.message };
 
-  if (!log) return { success: false, error: "Workout not found" };
-  const wasAlreadyCompleted = log.status === "completed";
-  if (!wasAlreadyCompleted && log.status !== "in_progress") {
-    return { success: false, error: "Only an active workout can be completed" };
-  }
-
-  let completedBodyweight = log.bodyweight_kg;
-
-  if (!wasAlreadyCompleted) {
-    const finishedAt = new Date().toISOString();
-    const startedAt = log.started_at ? new Date(log.started_at) : new Date();
-    const durationMinutes = Math.max(
-      0,
-      Math.round((new Date(finishedAt).getTime() - startedAt.getTime()) / 60000)
-    );
-
-    const { data: completedLog, error } = await supabase
-      .from("workout_logs")
-      .update({
-        status: "completed",
-        finished_at: finishedAt,
-        duration_minutes: durationMinutes,
-        notes: cleanNotes ?? null,
-        bodyweight_kg: bodyweight ?? null,
-        energy_rating: energyRating ?? null,
-      })
-      .eq("id", logId)
-      .eq("user_id", user.id)
-      .eq("status", "in_progress")
-      .select("id")
-      .maybeSingle();
-
-    if (error) return { success: false, error: error.message };
-    if (!completedLog) return { success: true, data: undefined };
-    completedBodyweight = bodyweight ?? null;
-  }
-
-  const advanceResult = await advanceAssignmentForSession(
-    supabase,
-    log.assignment_id,
-    log.session_id
-  );
-  if (!advanceResult.success) return advanceResult;
-
-  // Save bodyweight metric if provided
-  if (completedBodyweight !== null) {
-    const today = new Date().toISOString().split("T")[0];
-    await supabase
-      .from("body_metrics")
-      .upsert(
-        { user_id: user.id, date: today, bodyweight_kg: completedBodyweight },
-        { onConflict: "user_id,date" }
-      );
-  }
-
-  // Check for PRs and record them
+  // PRs use only completed measured sets, never planned targets or quick completion.
   await checkAndRecordPRs(logId, user.id);
-
   revalidatePath("/dashboard");
   revalidatePath("/history");
-  return { success: true, data: undefined };
-}
-
-async function advanceAssignmentForSession(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  assignmentId: string | null,
-  sessionId: string | null
-): Promise<ActionResult> {
-  if (!assignmentId || !sessionId) return { success: true, data: undefined };
-
-  const { data: assignment } = await supabase
-    .from("user_program_assignments")
-    .select("current_session_index, program_id, is_finite, status")
-    .eq("id", assignmentId)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!assignment) return { success: true, data: undefined };
-
-  const { data: sessions, error: sessionsError } = await supabase
-    .from("program_sessions")
-    .select("id")
-    .eq("program_id", assignment.program_id)
-    .order("session_order", { ascending: true });
-
-  if (sessionsError) return { success: false, error: sessionsError.message };
-  if (!sessions?.length) return { success: true, data: undefined };
-
-  const currentSession = sessions[assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % sessions.length];
-  if (!currentSession || currentSession.id !== sessionId) return { success: true, data: undefined };
-
-  const { error } = await supabase
-    .from("user_program_assignments")
-    .update({ current_session_index: assignment.current_session_index + 1 })
-    .eq("id", assignmentId)
-    .eq("current_session_index", assignment.current_session_index);
-
-  if (error) return { success: false, error: error.message };
+  revalidatePath("/workout");
+  revalidatePath(`/log/${logId}`);
   return { success: true, data: undefined };
 }
 
@@ -660,12 +497,8 @@ export async function upsertExerciseOverride(
 
   // Admin check if editing another user
   if (forUserId && forUserId !== user.id) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    if (profile?.role !== "admin") {
+    const { data: allowed, error } = await supabase.rpc("can_coach_member", { p_member_id: targetUserId });
+    if (error || allowed !== true) {
       return { success: false, error: "Not authorized" };
     }
   }
@@ -688,100 +521,14 @@ export async function markSessionDone(sessionId: string): Promise<ActionResult> 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  const today = new Date().toISOString().split("T")[0];
-
-  // Preserve detailed work already entered for this session.
-  const { data: inProgress } = await supabase
-    .from("workout_logs")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("session_id", sessionId)
-    .eq("status", "in_progress")
-    .eq("date", today)
-    .limit(1)
-    .maybeSingle();
-
-  if (inProgress) {
-    return {
-      success: false,
-      error: "This workout is already in progress. Open the session to resume it.",
-    };
-  }
-
-  const { data: assignment } = await supabase
-    .from("user_program_assignments")
-    .select("id, program_id, current_session_index, is_finite, status")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!assignment) return { success: false, error: "No active program" };
-
-  const { data: sessions } = await supabase
-    .from("program_sessions")
-    .select("id, title")
-    .eq("program_id", assignment.program_id)
-    .order("session_order", { ascending: true });
-
-  if (!sessions?.length) return { success: false, error: "No sessions in this program" };
-
-  const currentSession = sessions[assignment.is_finite ? assignment.current_session_index : assignment.current_session_index % sessions.length];
-  if (!currentSession || currentSession.id !== sessionId) {
-    return { success: false, error: "Complete your current session first" };
-  }
-
-  // Already completed today → no-op
-  const { data: existing } = await supabase
-    .from("workout_logs")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("session_id", sessionId)
-    .eq("assignment_id", assignment.id)
-    .eq("duration_minutes", 0)
-    .eq("status", "completed")
-    .eq("date", today)
-    .limit(1)
-    .maybeSingle();
-
-  if (existing) {
-    const { error } = await supabase
-      .from("user_program_assignments")
-      .update({ current_session_index: assignment.current_session_index + 1 })
-      .eq("id", assignment.id)
-      .eq("current_session_index", assignment.current_session_index);
-
-    if (error) return { success: false, error: error.message };
-    revalidatePath("/workout");
-    revalidatePath("/dashboard");
-    return { success: true, data: undefined };
-  }
-
-  const now = new Date().toISOString();
-  const { error } = await supabase.from("workout_logs").insert({
-    user_id: user.id,
-    session_id: sessionId,
-    assignment_id: assignment.id,
-    title: currentSession.title,
-    date: today,
-    started_at: now,
-    finished_at: now,
-    duration_minutes: 0,
-    status: "completed",
+  const { error } = await supabase.rpc("start_workout_atomically", {
+    p_session_id: sessionId,
+    p_quick_complete: true,
   });
-
   if (error) return { success: false, error: error.message };
-
-  // Advance session index
-  const { error: assignmentError } = await supabase
-    .from("user_program_assignments")
-    .update({ current_session_index: assignment.current_session_index + 1 })
-    .eq("id", assignment.id)
-    .eq("current_session_index", assignment.current_session_index);
-
-  if (assignmentError) return { success: false, error: assignmentError.message };
-
   revalidatePath("/workout");
   revalidatePath("/dashboard");
+  revalidatePath("/history");
   return { success: true, data: undefined };
 }
 
@@ -791,64 +538,13 @@ export async function unmarkSessionDone(sessionId: string): Promise<ActionResult
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  const { data: assignment } = await supabase
-    .from("user_program_assignments")
-    .select("id, current_session_index, program_id, is_finite, status")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!assignment) return { success: false, error: "No active program" };
-
-  const { data: sessions } = await supabase
-    .from("program_sessions")
-    .select("id")
-    .eq("program_id", assignment.program_id)
-    .order("session_order", { ascending: true });
-
-  if (!sessions?.length) return { success: false, error: "No sessions in this program" };
-
-  const prevIndex = assignment.is_finite ? assignment.current_session_index - 1 : (assignment.current_session_index - 1 + sessions.length) % sessions.length;
-  if (prevIndex < 0 || sessions[prevIndex]?.id !== sessionId) {
-    return { success: false, error: "Only the most recent session can be reopened" };
-  }
-
-  // Remove only the most recent quick completion. Detailed logs remain intact.
-  const { data: quickLog } = await supabase
-    .from("workout_logs")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("session_id", sessionId)
-    .eq("assignment_id", assignment.id)
-    .eq("duration_minutes", 0)
-    .eq("status", "completed")
-    .order("finished_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!quickLog) {
-    return {
-      success: false,
-      error: "Only a quick completion can be reopened. Detailed workout logs stay in history.",
-    };
-  }
-
-  const { error: deleteError } = await supabase
-    .from("workout_logs")
-    .delete()
-    .eq("id", quickLog.id);
-
-  if (deleteError) return { success: false, error: deleteError.message };
-
-  const { error } = await supabase
-    .from("user_program_assignments")
-    .update({ current_session_index: prevIndex })
-    .eq("id", assignment.id);
-
+  const { error } = await supabase.rpc("reopen_quick_workout_atomically", {
+    p_session_id: sessionId,
+  });
   if (error) return { success: false, error: error.message };
-
   revalidatePath("/workout");
   revalidatePath("/dashboard");
+  revalidatePath("/history");
   return { success: true, data: undefined };
 }
 

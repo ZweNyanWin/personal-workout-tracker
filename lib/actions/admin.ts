@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { requireBusinessCoach } from "@/lib/business/access";
 import type { ActionResult } from "@/types";
 import {
   canonicalExerciseName,
@@ -11,18 +12,7 @@ import {
 } from "@/lib/program-template-parser";
 
 async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") throw new Error("Not authorized");
-  return { supabase, user };
+  return requireBusinessCoach();
 }
 
 // ─── Get all members ──────────────────────────────────────────
@@ -85,16 +75,19 @@ export async function getMemberDetail(memberId: string) {
       .order("created_at", { ascending: false }),
     supabase
       .from("workout_logs")
-      .select("id, title, date, duration_minutes, energy_rating, notes, status, session:program_sessions(title)")
+      .select("id, title, date, duration_minutes, energy_rating, notes, status, session:program_sessions(title)", { count: "exact" })
       .eq("user_id", memberId)
+      .eq("status", "completed")
       .order("date", { ascending: false })
-      .limit(20),
+      .order("id", { ascending: false })
+      .limit(5),
   ]);
 
   return {
     profile: profileResult.data,
     assignments: assignmentsResult.data ?? [],
     recentLogs: recentLogsResult.data ?? [],
+    workoutCount: recentLogsResult.count ?? 0,
   };
 }
 
@@ -110,9 +103,7 @@ export async function updateMemberRole(
   }
 
   const { error } = await supabase
-    .from("profiles")
-    .update({ role })
-    .eq("id", memberId);
+    .rpc("set_coach_member_role", { p_user_id: memberId, p_role: role === "admin" ? "coach" : "client" });
 
   if (error) return { success: false, error: error.message };
   revalidatePath("/admin/members");
@@ -510,16 +501,15 @@ export async function createExercise(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Not authenticated" };
 
-  const { data: profile, error: profileError } = await supabase.from("profiles")
-    .select("role").eq("id", user.id).single();
-  if (profileError || !profile) return { success: false, error: "Could not verify exercise permissions" };
+  const { data: canCoach, error: profileError } = await supabase.rpc("is_admin");
+  if (profileError) return { success: false, error: "Could not verify exercise permissions" };
 
   const { data, error } = await supabase
     .from("exercises")
     .insert({
       ...payload,
       created_by: user.id,
-      is_public: profile.role === "admin",
+      is_public: canCoach === true,
       primary_lift: payload.primary_lift || null,
     })
     .select("id")
@@ -710,7 +700,7 @@ export async function getSessionWithExercises(sessionId: string) {
     ...session,
     exercises: exercisesResult.data ?? [],
     viewer_role: profileResult.data?.role ?? "member",
-    can_edit: profileResult.data?.role === "admin" && programResult.data?.approved_snapshot == null,
+    can_edit: (await supabase.rpc("can_manage_coaching_program", { p_program_id: session.program_id })).data === true && programResult.data?.approved_snapshot == null,
     can_start: currentSession?.id === sessionId,
   };
 }

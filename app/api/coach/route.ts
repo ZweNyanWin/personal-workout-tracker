@@ -15,6 +15,9 @@ const handle = createCoachHandler({
     const { data: profile, error: profileError } = await supabase.from("profiles").select("id").eq("id", user.id).single();
     if (profileError && profileError.code !== "PGRST116") throw new Error("Profile verification unavailable");
     if (profileError || !profile) return null;
+    const { data: aiAccess, error: aiError } = await supabase.rpc("coach_ai_access");
+    if (aiError) throw new Error("Business access verification unavailable");
+    if (aiAccess !== true) return null;
     return { id: user.id };
   },
   config: () => ({

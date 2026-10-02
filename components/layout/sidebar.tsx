@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Calculator,
   Sparkles,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -32,23 +33,21 @@ const MEMBER_NAV = [
 ];
 
 const ADMIN_NAV = [
-  { href: "/admin",          label: "Admin Dashboard", icon: ShieldCheck },
-  { href: "/admin/members",  label: "Members",         icon: Users },
+  { href: "/admin",          label: "Coach Workspace", icon: ShieldCheck },
+  { href: "/admin/members",  label: "Clients & Team",  icon: Users },
   { href: "/admin/programs", label: "Programs",        icon: BookOpen },
   { href: "/admin/exercises",label: "Exercise Library",icon: Settings },
+  { href: "/admin/business", label: "My Business",    icon: Building2 },
 ];
 
 interface SidebarProps {
   profile: Profile;
   previewMode?: boolean;
+  isCoach?: boolean;
+  isPlatformOwner?: boolean;
 }
 
-export function Sidebar({ profile, previewMode = false }: SidebarProps) {
-  const currentPath = usePathname();
-  const pathname = previewMode ? "/coach" : currentPath;
-  const isAdmin = profile.role === "admin";
-
-  function NavItem({ href, label, icon: Icon }: { href: string; label: string; icon: React.ElementType }) {
+function SidebarNavItem({ href, label, icon: Icon, pathname, previewMode }: { href: string; label: string; icon: React.ElementType; pathname: string; previewMode: boolean }) {
     const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
     return (
       <Link
@@ -64,7 +63,12 @@ export function Sidebar({ profile, previewMode = false }: SidebarProps) {
         {label}
       </Link>
     );
-  }
+}
+
+export function Sidebar({ profile, previewMode = false, isCoach, isPlatformOwner = false }: SidebarProps) {
+  const currentPath = usePathname();
+  const pathname = previewMode ? "/coach" : currentPath;
+  const isAdmin = isCoach ?? profile.role === "admin";
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-border bg-card/95 shadow-xl shadow-black/5 dark:shadow-black/20">
@@ -82,18 +86,25 @@ export function Sidebar({ profile, previewMode = false }: SidebarProps) {
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
         {MEMBER_NAV.map((item) => (
-          <NavItem key={item.href} {...item} />
+          <SidebarNavItem key={item.href} {...item} pathname={pathname} previewMode={previewMode} />
         ))}
 
         {isAdmin && (
           <>
             <div className="my-3 border-t border-border" />
             <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Admin
+              Coaching
             </p>
             {ADMIN_NAV.map((item) => (
-              <NavItem key={item.href} {...item} />
+              <SidebarNavItem key={item.href} {...item} pathname={pathname} previewMode={previewMode} />
             ))}
+          </>
+        )}
+        {isPlatformOwner && (
+          <>
+            <div className="my-3 border-t border-border" />
+            <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">PowerBuild owner</p>
+            <SidebarNavItem href="/platform" label="Coach Businesses" icon={Building2} pathname={pathname} previewMode={previewMode} />
           </>
         )}
       </nav>

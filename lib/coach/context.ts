@@ -22,8 +22,8 @@ export async function buildClientContext(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
   if (user.id !== userId) {
-    const { data: actor } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-    if (actor?.role !== "admin") throw new Error("Not authorized to read this client's training context");
+    const { data: allowed, error } = await supabase.rpc("can_coach_member", { p_member_id: userId });
+    if (error || allowed !== true) throw new Error("Not authorized to read this client's training context");
   }
 
   const [assignmentResult, profileResult, logsResult] = await Promise.all([

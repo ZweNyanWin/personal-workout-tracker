@@ -32,7 +32,8 @@ export default async function ExercisesPage() {
 
   if (!profile) redirect("/login");
 
-  const isAdmin = profile.role === "admin";
+  const { data: canCoach, error: accessError } = await supabase.rpc("is_admin");
+  const isAdmin = !accessError && canCoach === true;
   const exercises = await getAllExercises(isAdmin);
 
   // Group by movement type

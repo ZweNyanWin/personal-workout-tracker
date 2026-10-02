@@ -25,7 +25,7 @@ export function MarkDoneButton({
       } else {
         const result = await markSessionDone(sessionId);
         if (!result.success) toast.error(result.error);
-        else toast.success("Session complete");
+        else toast.success("Session marked done. Planned exercises saved; performance sets were not entered.");
       }
     });
   }
@@ -34,7 +34,7 @@ export function MarkDoneButton({
     <button
       onClick={toggle}
       disabled={pending}
-      title={displayDone ? "Unmark as done" : "Mark as done"}
+      title={displayDone ? "Unmark as done" : "Mark session done without entering performed sets"}
       className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors tap-none disabled:opacity-50 ${
         displayDone
           ? "border-success/40 bg-success/15 text-success hover:bg-success/20"

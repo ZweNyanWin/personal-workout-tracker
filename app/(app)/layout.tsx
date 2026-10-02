@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { Sidebar } from "@/components/layout/sidebar";
+import { getBusinessAccess } from "@/lib/business/access";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -16,12 +17,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .single();
 
   if (!profile) redirect("/login");
+  const access = await getBusinessAccess(supabase);
 
   return (
     <div className="flex h-dvh bg-background safe-top safe-left safe-right">
       {/* Desktop sidebar — hidden on mobile */}
       <div className="hidden md:flex md:shrink-0">
-        <Sidebar profile={profile} />
+        <Sidebar profile={profile} isCoach={access.isCoach} isPlatformOwner={access.isPlatformOwner} />
       </div>
 
       {/* Main content */}
@@ -34,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* Mobile bottom nav — hidden on desktop */}
       <div className="md:hidden">
-        <BottomNav isAdmin={profile.role === "admin"} />
+        <BottomNav isAdmin={access.isCoach} isPlatformOwner={access.isPlatformOwner} />
       </div>
     </div>
   );
