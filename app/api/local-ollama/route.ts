@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { coachModelName, installedCoachModels, localInspectionAllowed, localInspectionOriginAllowed, selectInstalledCoachModel } from "../../../lib/coach/local-models";
 
 const OLLAMA = "http://127.0.0.1:11434";
 const MODEL = "workout-coach";
-const MODELS = [MODEL, "workout-coach-v2"];
 
 async function trainingState() {
   try {
@@ -26,9 +26,7 @@ async function trainingState() {
 }
 
 function isLocalDevelopment(request: NextRequest) {
-  return process.env.NODE_ENV === "development" &&
-    ["127.0.0.1", "localhost", "[::1]"].includes(request.nextUrl.hostname) &&
-    /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(request.headers.get("host") ?? "");
+  return localInspectionAllowed(process.env.NODE_ENV, request.nextUrl.href, request.headers.get("host"));
 }
 
 async function getOllama(path: string) {
@@ -44,9 +42,13 @@ export async function GET(request: NextRequest) {
       getOllama("/api/version"), getOllama("/api/tags"), getOllama("/api/ps"),
       trainingState(),
     ]);
+    const available = installedCoachModels(tags);
     return Response.json({ online: true, version: version.version, model: MODEL, training,
-      available: tags.models.map((model: { name: string; size: number }) => ({ name: model.name, size: model.size })),
-      loaded: running.models.map((model: { name: string; size: number; size_vram: number; context_length: number }) =>
+      available,
+      loaded: (Array.isArray(running.models) ? running.models.slice(0, 512) : [])
+        .filter((model: { name: string }) => selectInstalledCoachModel(model.name, tags))
+        .slice(0, 64)
+        .map((model: { name: string; size: number; size_vram: number; context_length: number }) =>
         ({ name: model.name, size: model.size, size_vram: model.size_vram, context_length: model.context_length })),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch {
@@ -56,8 +58,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!isLocalDevelopment(request)) return new Response(null, { status: 404 });
-  const expectedOrigin = `${request.nextUrl.protocol}//${request.headers.get("host")}`;
-  if (request.headers.get("origin") !== expectedOrigin) {
+  if (!localInspectionOriginAllowed(process.env.NODE_ENV, request.nextUrl.href, request.headers.get("host"), request.headers.get("origin"))) {
     return Response.json({ error: "Use the local Ollama tab to send a message." }, { status: 403 });
   }
   let question: unknown;
@@ -74,13 +75,16 @@ export async function POST(request: NextRequest) {
   if (typeof question !== "string" || !question.trim() || question.length > 2000) {
     return Response.json({ error: "Enter a message of up to 2,000 characters." }, { status: 400 });
   }
-  if (typeof model !== "string" || !MODELS.includes(model)) return Response.json({ error: "Choose an available coach model." }, { status: 400 });
+  if (!coachModelName(model)) return Response.json({ error: "Choose an installed coach model." }, { status: 400 });
   if ((await trainingState()).busy) return Response.json({ error: "A local training or evaluation job is using the GPU. Try again when it finishes." }, { status: 503 });
   try {
+    const installedModel = selectInstalledCoachModel(model, await getOllama("/api/tags"));
+    if (!installedModel) return Response.json({ error: "This coach model is not installed. Refresh the model list." }, { status: 400 });
+    if ((await trainingState()).busy) return Response.json({ error: "A local training or evaluation job is using the GPU. Try again when it finishes." }, { status: 503 });
     const response = await fetch(`${OLLAMA}/api/chat`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(180_000)]),
-      body: JSON.stringify({ model, stream: true, keep_alive: "5m",
+      body: JSON.stringify({ model: installedModel, stream: true, keep_alive: "5m",
         messages: [{ role: "user", content: question.trim() }],
         options: { temperature: 0.2, top_k: 20, top_p: 0.8, repeat_penalty: 1, num_ctx: 8192, num_predict: 2048 },
       }),
