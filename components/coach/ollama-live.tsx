@@ -11,7 +11,7 @@ interface Status {
   online: boolean;
   version?: string;
   model: string;
-  available?: { name: string; size: number }[];
+  available?: { name: string; model: string; size: number; label: string; experimental: true }[];
   loaded?: { name: string; size: number; size_vram: number; context_length: number }[];
   training?: { busy: boolean; stage: string; step: number; total: number; loss?: number | null; validationLoss?: number | null; note: string; updatedAt?: string; evaluation?: { model: string; completed: number; total: number } | null };
 }
@@ -25,6 +25,8 @@ export function OllamaLive() {
   const [error, setError] = useState("");
   const [stats, setStats] = useState<{ seconds: number; tokens: number; truncated: boolean } | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const choices = status?.available ?? [];
+  const selectedAvailable = choices.some(entry => entry.model === model);
 
   useEffect(() => {
     let active = true;
@@ -44,7 +46,7 @@ export function OllamaLive() {
   }, []);
 
   async function send() {
-    if (running || status?.training?.busy || !question.trim()) return;
+    if (running || status?.training?.busy || !status?.online || !selectedAvailable || !question.trim()) return;
     setRunning(true); setAnswer(""); setError(""); setStats(null);
     const abort = new AbortController();
     controller.current = abort;
@@ -85,20 +87,19 @@ export function OllamaLive() {
 
   const loaded = status?.loaded?.find((entry) => entry.name === `${model}:latest`);
   const training = status?.training;
-  const candidateAvailable = status?.available?.some((entry) => entry.name === "workout-coach-v2:latest");
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 md:py-12 space-y-6">
       <header className="flex items-center justify-between gap-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-primary/10 p-3"><Terminal className="h-6 w-6 text-primary" /></div><div><h1 className="text-2xl font-bold">Ollama, live on your Mac</h1><p className="mt-1 text-sm text-muted-foreground">Watch your workout coach generate a response.</p></div></div><ThemeToggle /></header>
       <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between gap-3"><p className="flex items-center gap-2 text-sm font-semibold"><span className={`h-2 w-2 rounded-full ${status?.online ? "bg-success" : "bg-warning"}`} />{status === null ? "Checking Ollama…" : status.online ? "Ollama is running" : "Ollama is unreachable"}</p><span className="text-xs text-muted-foreground">{status?.version ? `v${status.version}` : "Local only"}</span></div>
-        <div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-muted p-3"><label htmlFor="coach-model" className="text-xs text-muted-foreground">Model</label><select id="coach-model" className="mt-1 block w-full bg-transparent text-sm font-semibold" value={model} disabled={running || training?.busy} onChange={(event) => setModel(event.target.value)}><option value="workout-coach">Original coach · unvalidated</option>{candidateAvailable && <option value="workout-coach-v2">Fine-tuned v2 · experimental</option>}</select></div><div className="rounded-xl bg-muted p-3"><p className="text-xs text-muted-foreground">Generation</p><p className="mt-1 text-sm font-semibold">{training?.busy ? "GPU reserved for a local job" : running ? "Generating tokens…" : loaded ? "Loaded · ready" : "Loads on request"}</p></div></div>
+        <div className="grid gap-3 sm:grid-cols-2"><div className="min-w-0 rounded-xl bg-muted p-3"><label htmlFor="coach-model" className="text-xs text-muted-foreground">Inspect an installed model</label><select id="coach-model" className="mt-1 block w-full min-w-0 bg-transparent text-sm font-semibold" value={model} disabled={running || training?.busy || !choices.length} onChange={(event) => setModel(event.target.value)}>{!selectedAvailable && <option value={model} disabled>{status === null ? "Checking installed models…" : "Selected model is not available"}</option>}{choices.map(entry => <option key={entry.model} value={entry.model}>{entry.label}</option>)}</select></div><div className="rounded-xl bg-muted p-3"><p className="text-xs text-muted-foreground">Generation</p><p className="mt-1 text-sm font-semibold">{training?.busy ? "GPU reserved for a local job" : running ? "Generating tokens…" : !selectedAvailable ? "Choose an installed model" : loaded ? "Loaded · ready" : "Loads on request"}</p></div></div>
         {loaded && <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"><Cpu className="h-4 w-4" /><span>{(loaded.size / 1e9).toFixed(1)} GB loaded</span><span>{loaded.size > 0 ? Math.round(loaded.size_vram / loaded.size * 100) : 0}% on GPU</span><span>{loaded.context_length.toLocaleString()} context tokens</span></p>}
         <p className="text-xs text-muted-foreground">Responses run locally on this Mac. This tab sends only your message to the selected model; it does not fetch workout history or reference files.</p>
-        <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs leading-relaxed text-muted-foreground">Experimental coach: the first trained candidates failed important answer checks, including repetition and factual errors. They are available for inspection and are not connected to your saved training.</p>
+        <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs leading-relaxed text-muted-foreground">Every model here is experimental and unvalidated. Earlier candidates failed important coaching checks. Selecting a candidate runs an isolated inspection; it never changes the Tommy model used by your app or assigns a workout.</p>
       </section>
       <section className="rounded-2xl border border-border bg-card p-5 space-y-3" aria-live="polite"><div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Local model training</h2><span className="text-sm text-primary">{training?.stage ?? "Checking…"}</span></div>{Boolean(training?.total) && <><progress className="h-2 w-full accent-primary" value={training?.step ?? 0} max={training?.total} /><p className="text-xs text-muted-foreground">{training?.step} / {training?.total} training steps</p></>}{(training?.loss != null || training?.validationLoss != null) && <p className="text-xs text-muted-foreground">{training?.loss != null && `Training loss ${training.loss.toFixed(3)}`}{training?.validationLoss != null && ` · Validation loss ${training.validationLoss.toFixed(3)}`}</p>}<p className="text-sm text-muted-foreground">{training?.note || "The original model is preserved. Training creates a separate candidate for evaluation."}</p>{training?.evaluation && <div className="space-y-2"><progress className="h-2 w-full accent-primary" value={training.evaluation.completed} max={training.evaluation.total} /><p className="text-xs text-muted-foreground">{training.evaluation.completed} / {training.evaluation.total} held-out cases · {training.evaluation.model}</p></div>}<p className="text-xs text-muted-foreground">Loss measures prediction fit; it does not establish answer quality. Held-out coaching tests determine whether a candidate improves.</p></section>
       <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
-        <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="space-y-3"><label htmlFor="ollama-question" className="text-sm font-semibold">Try your model</label><Input id="ollama-question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} disabled={running} /><div className="flex gap-2"><Button type="submit" disabled={running || training?.busy || !status?.online || !question.trim()}><Send className="h-4 w-4" />Run on Ollama</Button>{running && <Button type="button" variant="outline" onClick={() => controller.current?.abort()}><Square className="h-3.5 w-3.5" />Stop</Button>}</div></form>
+        <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="space-y-3"><label htmlFor="ollama-question" className="text-sm font-semibold">Try your model</label><Input id="ollama-question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={2000} disabled={running} /><div className="flex gap-2"><Button type="submit" disabled={running || training?.busy || !status?.online || !selectedAvailable || !question.trim()}><Send className="h-4 w-4" />Run on Ollama</Button>{running && <Button type="button" variant="outline" onClick={() => controller.current?.abort()}><Square className="h-3.5 w-3.5" />Stop</Button>}</div></form>
         {(answer || running) && <div className="rounded-xl bg-muted p-4"><p className="mb-3 text-xs font-semibold text-primary">{model} {running ? "· generating live" : "· response"}</p><div className="text-sm leading-relaxed whitespace-pre-wrap break-words" role="log" aria-live="polite">{answer || "Loading the model…"}</div></div>}
         {stats && <p className="text-xs text-muted-foreground">{stats.tokens} generated tokens in {stats.seconds.toFixed(1)} seconds{stats.truncated ? " · token limit reached; answer may be incomplete" : " · finished"}</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
