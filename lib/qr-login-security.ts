@@ -21,7 +21,7 @@ export function isSameOriginQrRequest(request: Request) {
   }
 }
 
-export function qrSourceHash(request: Request, environment: QrEnvironment = process.env) {
+export function qrSourceHash(request: Request, environment: QrEnvironment) {
   const key = environment.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) return null;
 

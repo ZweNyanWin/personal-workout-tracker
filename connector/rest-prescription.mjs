@@ -6,7 +6,7 @@ const hasPhrase = (text, phrase) => (` ${normalize(text)} `).includes(` ${phrase
 const groupSuffix = /\s*(?:[—–-]\s*|\(\s*|\s+)(?:top\s+(?:set|single)|backdowns?|back[- ]?off(?:\s+sets?)?|technique|primary|secondary)\s*\)?\s*$/i;
 const number = "(\\d+(?:\\.\\d+)?)(?:\\s*(?:[-–—]|to)\\s*(\\d+(?:\\.\\d+)?))?";
 const unit = "(min(?:ute)?s?|sec(?:ond)?s?|m|s)";
-const forward = new RegExp(`\\brest(?:\\s+time)?(?:\\s+(?:between\\s+(?:working\\s+)?sets|after\\s+(?:each\\s+)?sets?|for))?\\s*[:=]?\\s*${number}\\s*${unit}?(?![\\p{L}\\p{N}.])`, "giu");
+const forward = new RegExp(`\\brest(?:\\s+time)?(?:\\s+(?:between\\s+(?:working\\s+)?sets|after\\s+(?:each\\s+)?sets?|for))?\\s*[:=]?\\s*(?:(?:is|should\\s+be|must\\s+be)\\s+)?(?:exactly\\s+)?${number}\\s*${unit}?(?![\\p{L}\\p{N}.])`, "giu");
 const reverse = new RegExp(`\\b${number}\\s*${unit}\\s+(?:of\\s+)?rest\\b`, "giu");
 const groups = [
   ["top single", /\btop\s+single\b/i, /\btop\s+single\b/i],

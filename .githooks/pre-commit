@@ -1,0 +1,4 @@
+#!/bin/sh
+# Inspect the actual index; editing a secret away without re-staging is unsafe.
+set -eu
+node scripts/secret-guard.mjs --staged

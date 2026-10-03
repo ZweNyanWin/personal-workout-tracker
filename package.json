@@ -13,7 +13,14 @@
     "test:auth": "node --experimental-strip-types --test scripts/auth-redirect.test.mjs",
     "test:coach-relay": "node --experimental-strip-types --test scripts/coach-relay.test.mjs",
     "coach:connect": "node connector/run.mjs",
-    "test:connector": "node --test connector/*.test.mjs"
+    "test:connector": "node --test connector/*.test.mjs",
+    "security:secrets": "node scripts/secret-guard.mjs",
+    "security:staged": "node scripts/secret-guard.mjs --staged",
+    "security:history": "node scripts/secret-guard.mjs --history",
+    "security:deployment": "node scripts/check-deployment-privacy.mjs",
+    "security:check": "npm run security:secrets && npm run security:deployment",
+    "security:install-hooks": "git config --local core.hooksPath .githooks",
+    "test:security": "node --test scripts/secret-guard.test.mjs scripts/deployment-privacy.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

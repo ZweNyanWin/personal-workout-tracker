@@ -27,7 +27,7 @@ export function NewCoachBusiness({ disabled = false }: { disabled?: boolean }) {
       <label className="space-y-1.5 text-sm font-medium">Business name<Input disabled={disabled} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} required placeholder="Coach's business name" /></label>
       <label className="space-y-1.5 text-sm font-medium">Coach account email<Input disabled={disabled} type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={320} required placeholder="coach@example.com" autoComplete="off" /></label>
     </div>
-    <p className="text-xs leading-relaxed text-muted-foreground">The coach signs up and verifies this email first. Onboarding gives that account its own business and coach workspace. No payment or temporary password is required.</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">Invite the coach in Supabase → Authentication → Users first, then have them accept the email invitation. Add their verified account here to open their own business and coach workspace. Public signup is closed during testing.</p>
     <Button type="submit" disabled={busy || disabled}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Add coach business</Button>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {saved && <p role="status" className="text-sm text-emerald-600 dark:text-emerald-400">Business created on the free testing plan.</p>}
@@ -73,7 +73,7 @@ export function AddBusinessClient() {
     } catch { setMessage("Could not reach PowerBuild. Try again."); } finally { setBusy(false); }
   }}>
     <label className="block space-y-1.5 text-sm font-medium">Client account email<Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={320} placeholder="client@example.com" autoComplete="off" /></label>
-    <p className="text-xs leading-relaxed text-muted-foreground">Ask the client to sign up and verify their email first. Accounts that belong to another coach business cannot be moved here.</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">Ask the PowerBuild owner to invite this client first. After they accept the email invitation, add their verified account here. Accounts that belong to another coach business cannot be moved here.</p>
     <Button type="submit" disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}Add client</Button>
     {message && <p role="status" className="text-sm">{message}</p>}
   </form>;

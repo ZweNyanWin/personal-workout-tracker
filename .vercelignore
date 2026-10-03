@@ -4,6 +4,8 @@
 /docs/
 /scripts/
 /supabase/
+/.githooks/
+/.github/
 .env*
 /.next/
 /node_modules/
@@ -13,3 +15,12 @@
 *.tsbuildinfo
 **/__pycache__/
 *.log
+*.pem
+*.key
+*.gguf
+*.safetensors
+*.ckpt
+*.pth
+*.onnx
+*id_rsa
+*id_ed25519

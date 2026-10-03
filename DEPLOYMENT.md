@@ -1,211 +1,93 @@
-# PowerBuild Tracker — Deployment Guide
+# PowerBuild deployment and testing
 
-## Prerequisites
-- Node.js 20+
-- A free [Supabase](https://supabase.com) account
-- A free [Vercel](https://vercel.com) account
+PowerBuild currently uses Supabase Free, Vercel Hobby, and Ollama on the owner's Mac. The stable testing URL is https://personal-workout-tracker-chi.vercel.app. No paid AI API, billing integration, or plan upgrade is required for this setup.
 
----
+Vercel Hobby allows personal, non-commercial use. Choose hosting that permits commercial use before charging coaches. Free services have usage and availability limits; a Mac and a temporary tunnel cannot provide guaranteed 24/7 service. Check the current [Vercel Hobby terms](https://vercel.com/docs/plans/hobby) and [Supabase plan limits](https://supabase.com/pricing).
 
-## Step 1 — Create Supabase project
+## Backend and account setup
 
-1. Go to [supabase.com](https://supabase.com) → New project
-2. Choose a region close to you
-3. Set a strong database password (save it)
-4. Wait for the project to spin up (~1 min)
+For a fresh database, run the numbered files under `supabase/migrations/` in order, from 001 through 012. For an existing database, apply only missing migrations after reviewing its migration history and backup. Never rerun a migration merely because its filename appears in this guide.
 
----
+Migration 011 separates the platform operator from coach businesses and replaces global administrator permissions. An unambiguous existing single administrator is bootstrapped as the initial operator; multiple existing administrators require an explicit database-owner grant. A browser role field or signup metadata cannot grant platform access. Migration 012 adds atomic workout start/finish and immutable recorded prescriptions.
 
-## Step 2 — Run the database migrations
+Keep **Authentication → Sign In / Providers → Allow new users to sign up** disabled during invite-only testing. The app's `/signup` route redirects to login, but that alone does not disable Supabase public signup.
 
-In Supabase → **SQL Editor**, run these files **in order**:
+1. The PowerBuild owner invites a coach through Supabase **Authentication → Users**. After the account is confirmed, the owner adds the verified email and business from `/platform`.
+2. The owner invites a client through Supabase Auth. After confirmation, the coach adds that existing account from `/admin/business`.
+3. Coaches manage their own clients, exercise library, drafts and assignments. The owner's business dashboard shows aggregate operational information; other businesses' client conversations and health records are excluded.
 
-```
-supabase/migrations/001_schema.sql    ← tables + triggers
-supabase/migrations/002_rls.sql       ← row level security policies
-supabase/migrations/003_energy_rating.sql ← optional workout energy rating
-supabase/migrations/004_qr_login.sql  ← server-only phone-to-desktop QR login requests
-```
+An account currently belongs to one business. The app does not yet send invitation emails itself or move an account between businesses. Supabase invitation delivery must be tested for the intended recipient; do not assume its default email service supports a production SaaS.
 
-Paste each file's contents and click **Run**.
+## Environment variables
 
----
+Configure values through Supabase/Vercel's normal dashboard or CLI sign-in flow. Keep local values in the ignored `.env.local`, readable only by its owner. Never paste private values into chat, Git, screenshots, command arguments, or a public URL.
 
-## Step 3 — Seed data (optional but recommended)
+| Name | Where it is used |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Public browser/backend configuration |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public anonymous key; database RLS enforces access |
+| `NEXT_PUBLIC_APP_URL` | Exact HTTPS app origin |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only, for verified chat persistence and QR login |
+| `COACH_GATEWAY_URL` | Server only, temporary HTTPS connector address |
+| `COACH_GATEWAY_TOKEN` | Server only, authenticated Mac connector access |
 
-1. Go to Supabase → **Authentication** → **Users**
-2. Create 3 users manually:
-   - `admin@powerbuild.app` (you)
-   - `alex@powerbuild.app`
-   - `jordan@powerbuild.app`
-3. Copy each user's UUID from the Users table
-4. Open `supabase/seed.sql` and **replace the placeholder UUIDs**:
-   - `00000000-0000-0000-0000-000000000001` → your admin UUID
-   - `00000000-0000-0000-0000-000000000002` → alex's UUID
-   - `00000000-0000-0000-0000-000000000003` → jordan's UUID
-5. Run the updated `seed.sql` in the SQL Editor
-6. Back in Authentication → Users, set your user's role:
-   ```sql
-   UPDATE profiles SET role = 'admin' WHERE email = 'admin@powerbuild.app';
-   ```
+A Supabase anonymous/publishable key is intentionally public. A service-role/secret key bypasses RLS and must never use the `NEXT_PUBLIC_` prefix. Backend credential helpers import `server-only` so accidental browser imports fail the build. QR security calculations take an explicit environment from the server route.
 
----
+In Supabase **Authentication → URL Configuration**, set the production Site URL and allow the exact app origin's auth callback/reset routes. Local development callback URLs should be separate from production links.
 
-## Step 4 — Local development
+## Local app and Mac AI
 
 ```bash
-# Create .env.local and fill in your Supabase URL and anon key
-# (Supabase → Settings → API)
-# For phone-to-desktop QR sign-in, also set SUPABASE_SERVICE_ROLE_KEY
-# in .env.local. It is server-only: never prefix it with NEXT_PUBLIC.
-
-# Install dependencies
-npm install
-
-# Run dev server
+npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Ollama listens on `127.0.0.1:11434`. The private gateway listens on `127.0.0.1:11435`; the phone talks to authenticated app routes over HTTPS. Do not expose Ollama directly or put the connector token in browser code.
 
----
-
-## Step 5 — Deploy to Vercel (free)
-
-### Option A — CLI
-```bash
-npm i -g vercel
-vercel login
-vercel --prod
-```
-
-Keep `.vercelignore` in place for CLI deployments. It excludes local model data,
-evaluation outputs, vault notes, environment files and generated build folders.
-Deploy fresh application source so Vercel builds using its existing production
-environment variables; do not upload a local prebuilt output containing private
-training state. `next.config.ts` also excludes `ai/` and `docs/` from server traces.
-
-### Option B — GitHub
-1. Push this repo to GitHub
-2. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
-3. In **Environment Variables**, add:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL     = https://your-ref.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY = your-anon-key
-   NEXT_PUBLIC_APP_URL           = https://personal-workout-tracker-chi.vercel.app
-   SUPABASE_SERVICE_ROLE_KEY     = your-server-only-service-role-key
-   ```
-4. Click **Deploy**
-
----
-
-## Step 6 — Set production URL in Supabase
-
-For this Vercel project, use `https://personal-workout-tracker-chi.vercel.app`
-as the production origin. Deployment-specific URLs can require Vercel login even
-when the production project domain is public.
-
-1. Supabase → Authentication → URL Configuration
-2. Set **Site URL** to `https://personal-workout-tracker-chi.vercel.app`
-3. Add to **Redirect URLs**: `https://personal-workout-tracker-chi.vercel.app/**`
-
----
-
-## Step 7 — Post-deploy checklist
-
-- [ ] Production URL reaches the tracker (not Vercel Authentication). If Vercel Deployment Protection is enabled, decide whether to grant access or change its production setting in Vercel; the tracker itself already requires sign-in.
-- [ ] The Supabase project URL resolves and the project is active
-- [ ] Supabase Auth → URL Configuration contains the exact production origin and callback URL
-- [ ] Can sign in with admin account
-- [ ] Can request and resend a sign-in link, confirmation email (for unconfirmed users), and reset link
-- [ ] Phone already signed in can scan a desktop QR, confirm the matching code, and approve desktop sign-in
-- [ ] Dashboard shows next session card
-- [ ] Can tap "Start Workout" and log sets
-- [ ] Marking a set complete saves correctly
-- [ ] Finishing a workout advances session index
-- [ ] Analytics page loads charts
-- [ ] Admin can see all members at `/admin`
-- [ ] Add to Home Screen card appears on login, dashboard, and profile in a browser
-- [ ] iPhone: Safari → Share → Add to Home Screen → Open as Web App (if shown) → Add
-- [ ] Launching from the home-screen icon hides the installation card and clears the notch/home indicator
-- [ ] App icon appears on home screen after install
-- [ ] After one online launch, opening the installed app offline shows the reconnect screen
-
----
-
-## Free tier limits (Supabase free)
-
-| Resource      | Free limit    | Expected usage (6 users) |
-|---------------|---------------|--------------------------|
-| DB storage    | 500 MB        | < 10 MB                  |
-| Auth users    | 50k MAU       | 6 users                  |
-| API requests  | 500k/month    | < 50k/month              |
-| Edge Functions| 500k invocations | Not used (server actions) |
-
-You will never hit free limits with a private 5–6 user group.
-
----
-
-## Adding a new member
-
-Public signup is disabled. Create or invite the user in Supabase Auth, then go to
-`/admin/members` to assign a program. They can sign in by password or email link
-after their account is confirmed.
-
-## Phone-to-desktop QR sign-in
-
-This is **not** a QR code that merely opens the login page. The phone must already
-be signed in to the same tracker origin. The user compares the six-digit code
-on both screens and explicitly approves the desktop session on the phone.
-
-Setup:
-
-1. Run `supabase/migrations/004_qr_login.sql` in the **same active Supabase project**
-   used by the deployed app.
-2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel Production environment variables and
-   `.env.local` for local testing. Get it from the project's API settings. Do not
-   put it in client code, Git, or a `NEXT_PUBLIC_` variable. Redeploy after setting it.
-3. Open the production `/login` page on a signed-out desktop; choose **Sign in with
-   phone QR**. On an already signed-in phone, scan the code, check that the codes
-   match, and tap **Approve desktop sign-in**. The desktop should enter the app.
-
-Each QR request expires after five minutes and can be consumed once. The QR URL
-contains only an approval secret; the desktop's polling secret is separate. Old
-expired rows can be removed periodically with
-`DELETE FROM qr_login_requests WHERE expires_at < NOW() - INTERVAL '1 day';`.
-
----
-
-## Updating the app
+After initial protected configuration described in `connector/README.md`:
 
 ```bash
-git add .
-git commit -m "your changes"
-git push  # Vercel auto-deploys on push to main
+npm run coach:connect -- --background
+node connector/run.mjs --status
+node connector/run.mjs --stop
 ```
 
-## iPhone home-screen app
+Configuration and logs live under `$HOME/workout-ai/powerbuild-connector`, outside Git, with private permissions. Starting the connector creates a new temporary tunnel, updates only the existing Vercel project's server-side connection URL, and rebuilds its previously hosted source. It does not deploy uncommitted local app changes. Keep the Mac awake and online with its lid open when clients need Tommy.
 
-Open the stable production URL in Safari, tap **Add to Home Screen** in
-PowerBuild for instructions, then use Safari's **Share → Add to Home Screen**.
-If Safari shows **Open as Web App**, leave it enabled and tap **Add**.
-Launch **PowerBuild** from the new icon and sign in there if asked.
+Generated programs are proposals. The coach reviews and approves an assignment before a client sees it. Structural validation cannot establish that every model suggestion is sound; a rejected model candidate must not replace the working model solely because its training loss improved.
 
-The app opens in standalone mode with an Apple touch icon and safe-area spacing.
-Safari installation uses its Share menu; it does not provide Chrome's native
-install prompt. Chrome/Edge use the app's install button when their browser
-provides a native installation event, with menu instructions as a fallback.
+## Security checks before publishing
 
-The service worker runs in production over HTTPS (or on localhost for production
-testing). It caches only public assets and serves a public reconnect page when
-navigation fails offline. Workout data, sign-in responses, and API calls remain
-online; this does not add offline workout logging.
+```bash
+npm run security:install-hooks
+npm run security:secrets
+npm run security:staged
+npm run security:history
+npm run build
+npm run test:security
+npm run security:deployment
+```
 
----
+The commit hook scans the complete staged index, including a secret that was edited away without being re-staged. Findings show only category, file and line; matched values and Git error buffers are suppressed. Private vault notes, client/training corpora, runtime config and model weights are blocked separately from credential detection.
 
-## Moving to Cloudflare Pages (if needed)
+The push hook scans commits reachable from local Git refs, including historical blobs removed from the current tree. This does not inspect unreachable or reflog-only objects. A detected historical credential must be revoked; removing its current file does not remove it from history.
 
-1. The app is standard Next.js with no Vercel-specific features
-2. Run: `npm run build` — confirm it builds cleanly
-3. Follow Cloudflare Pages → Next.js deployment guide
-4. Keep the same env vars
+The deployment check uses the actual locally cached Vercel CLI 62 file collector without deploying or downloading anything. Cache that pinned CLI through its normal installation flow if needed. It verifies uploaded files, symlink destinations, server-only boundaries, and a fresh production browser build including source maps/public assets. Empty excluded directory placeholders are not uploaded private files.
+
+The GitHub Security guards workflow uses public build placeholders, read-only repository permissions, a pinned checkout action and no production credentials. It builds the app and runs the negative security tests. Standard GitHub-hosted runners for this public repository are [free](https://docs.github.com/en/actions/concepts/billing-and-usage). The hook is local and must be installed in each checkout; neither scanner can guarantee detection of every possible secret format.
+
+Keep `.vercelignore`: local AI work, vault notes, migrations, connector files, scripts, environment files and generated local builds are excluded from CLI deployment. Never upload a local prebuilt bundle containing private data.
+
+## Publishing app source
+
+Use explicit file staging after reviewing the diff. Avoid `git add .` in a workspace containing local training material. Run the security checks, commit, and publish through the project's normal Git/CLI workflow. Deploy fresh app source so Vercel builds with its existing server-side environment. Never copy production credentials between machines.
+
+After release, verify anonymous requests cannot access coach/owner APIs, authenticated tenant isolation still holds, production preview routes are unavailable, and the authenticated Mac connector reports ready without returning its token. An owner-menu visibility check is useful, but authorization must also be enforced in the server and database.
+
+## iPhone and workout verification
+
+Open the stable HTTPS app in Safari, then use **Share → Add to Home Screen**. Leave **Open as Web App** enabled if Safari offers it. Launch from the new icon and sign in there if needed. The service worker caches public assets and a reconnect page; authenticated workouts/API responses are not cached for offline logging.
+
+For workout tests, verify Start stores a planned snapshot and blank actual results, Finish saves typed values even without individual set checkmarks, and a repeated Finish cannot overwrite completed results or advance progress twice. Quick **Mark Done** records completion plus the planned outline, without inventing weights/reps/RPE. Older unrecorded measurements cannot be reconstructed.
+
+Member detail displays five recent workouts with a full-history link. Search, date/status filters and 20-item pages bound the history view. Back navigation keeps internal filters/member context; foreign or external return destinations are rejected.

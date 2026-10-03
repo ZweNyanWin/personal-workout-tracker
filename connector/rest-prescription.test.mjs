@@ -32,6 +32,13 @@ test("top and backdown rests remain independent even when the model reuses a wri
   assert.deepEqual(seconds("Create a strength day at RPE 8"), [undefined, undefined, undefined, undefined]);
 });
 
+test("natural language exact-rest instructions override suggestions without applying negated durations", () => {
+  assert.deepEqual(seconds("Rest between sets is exactly 2 minutes."), [120, 120, 120, 120]);
+  assert.deepEqual(seconds("Rest time should be exactly 1.5 minutes."), [90, 90, 90, 90]);
+  assert.deepEqual(seconds("Rest must be 3 minutes; Cable Row rest is exactly 2 minutes."), [180, 180, 120, 180]);
+  assert.deepEqual(seconds("Do not set rest to 2 minutes. Rest is not 3 minutes."), [undefined, undefined, undefined, undefined]);
+});
+
 test("exact variations, generic named lift rests and multiline exercise headings target the matching groups", () => {
   assert.deepEqual(seconds("Paused Bench Press: rest 3 min; Low-Bar Squat: rest 5 min"), [180, 180, undefined, 300]);
   assert.deepEqual(seconds("Bench rest 3 min"), [180, 180, undefined, undefined]);

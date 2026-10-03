@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   if (!isSameOriginQrRequest(request)) {
     return qrJson({ error: "Start phone sign-in from this website." }, 403);
   }
-  const sourceHash = qrSourceHash(request);
+  const sourceHash = qrSourceHash(request, process.env);
   if (!sourceHash) return qrJson({ error: "Phone sign-in is temporarily unavailable." }, 503);
 
   const admin = getQrAdminClient();
