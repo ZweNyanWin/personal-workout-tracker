@@ -34,6 +34,20 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: "/accept-coach-invite",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+      {
+        source: "/auth/confirm",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+      {
         source: "/sw.js",
         headers: [
           { key: "Content-Type", value: "application/javascript; charset=utf-8" },

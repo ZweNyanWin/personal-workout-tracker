@@ -1,14 +1,32 @@
--- Synthetic security checks. Run after migration 008 only on a disposable DB.
+-- Synthetic security checks for current migrations 001–015 on the isolated DB.
 -- Everything here, including fixture users and any trigger state, rolls back.
 BEGIN;
+DO $$ BEGIN
+  IF current_setting('port')::integer<>55439 OR current_database() NOT LIKE 'powerbuild_%'
+  THEN RAISE EXCEPTION 'Run this fixture only on the isolated PowerBuild database at port 55439'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','',true);
 
 INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES
   ('cc000001-0000-4000-8000-000000000001','chat-a@example.invalid','{}'),
   ('cc000001-0000-4000-8000-000000000002','chat-b@example.invalid','{}'),
-  ('cc000001-0000-4000-8000-000000000003','chat-c@example.invalid','{}');
-INSERT INTO programs(title) VALUES('Chat security fixture');
-INSERT INTO user_program_assignments(user_id,program_id)
-  SELECT 'cc000001-0000-4000-8000-000000000002',id FROM programs
+  ('cc000001-0000-4000-8000-000000000003','chat-c@example.invalid','{}'),
+  ('cc000001-0000-4000-8000-000000000004','chat-coach-a@example.invalid','{}'),
+  ('cc000001-0000-4000-8000-000000000005','chat-coach-b@example.invalid','{}');
+UPDATE profiles SET role='admin' WHERE id IN ('cc000001-0000-4000-8000-000000000004','cc000001-0000-4000-8000-000000000005');
+INSERT INTO coach_organizations(id,name,owner_user_id) VALUES
+  ('cc100001-0000-4000-8000-000000000001','Chat business A','cc000001-0000-4000-8000-000000000004'),
+  ('cc100001-0000-4000-8000-000000000002','Chat business B','cc000001-0000-4000-8000-000000000005');
+INSERT INTO coach_memberships(user_id,organization_id,role) VALUES
+  ('cc000001-0000-4000-8000-000000000004','cc100001-0000-4000-8000-000000000001','coach'),
+  ('cc000001-0000-4000-8000-000000000001','cc100001-0000-4000-8000-000000000001','client'),
+  ('cc000001-0000-4000-8000-000000000002','cc100001-0000-4000-8000-000000000001','client'),
+  ('cc000001-0000-4000-8000-000000000005','cc100001-0000-4000-8000-000000000002','coach'),
+  ('cc000001-0000-4000-8000-000000000003','cc100001-0000-4000-8000-000000000002','client');
+INSERT INTO programs(title,created_by,client_id,organization_id)
+  VALUES('Chat security fixture','cc000001-0000-4000-8000-000000000004','cc000001-0000-4000-8000-000000000002','cc100001-0000-4000-8000-000000000001');
+INSERT INTO user_program_assignments(user_id,program_id,assigned_by)
+  SELECT 'cc000001-0000-4000-8000-000000000002',id,'cc000001-0000-4000-8000-000000000004' FROM programs
   WHERE title='Chat security fixture' ORDER BY created_at DESC LIMIT 1;
 GRANT USAGE ON SCHEMA public, auth TO authenticated, service_role;
 GRANT SELECT ON user_program_assignments TO service_role;
@@ -57,6 +75,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','',true);
 
 -- Older open requests test the open cap independently of the hourly cap.
 INSERT INTO coaching_review_requests(member_id,message,created_at)
@@ -71,6 +90,9 @@ DO $$ BEGIN
   EXCEPTION WHEN OTHERS THEN IF SQLERRM NOT LIKE 'Please wait for your coach%' THEN RAISE; END IF; END;
 END $$;
 RESET ROLE;
+-- A server service client has no browser identity; do not carry the preceding
+-- client's JWT into trusted synthetic history writes.
+SELECT set_config('request.jwt.claim.sub','',true);
 
 SET ROLE service_role;
 DO $$ DECLARE turn_id uuid; other_assignment uuid; i integer; BEGIN
@@ -135,6 +157,7 @@ DO $$ DECLARE turn_id uuid; other_assignment uuid; i integer; BEGIN
   END IF;
 END $$;
 RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','',true);
 
 INSERT INTO coaching_review_requests(member_id,message,status,created_at)
 SELECT 'cc000001-0000-4000-8000-000000000003','Preserved review '||n,'resolved',clock_timestamp()-interval '2 days' + n*interval '1 second'

@@ -6,7 +6,7 @@ const exercise = (name, dose = { kind: "reps", range: { min: 5, max: 5 }, perSid
   ({ name, sets: 3, dose, effort, loadOrAssistance, restSeconds: 180 });
 
 test("classifies barbell main lifts without pulling accessories or calisthenics into exact-rep rules", () => {
-  for (const name of ["Squat", "High-Bar Squat", "Front Squat", "Paused Back Squat", "Bench Press", "Close-Grip Bench Press", "Paused Bench", "Paused Bench — top single", "Bench - technique", "Bench top single", "Larsen Press", "Spoto Press", "Deadlift", "Sumo Deadlift", "Deficit Deadlift", "Overhead Press", "Military Press"]) {
+  for (const name of ["Squat", "High-Bar Squat", "Paused-High Bar", "Paused Low-Bar", "Front Squat", "Paused Back Squat", "Bench Press", "Close-Grip Bench Press", "Paused Bench", "Paused Bench — top single", "Bench - technique", "Bench top single", "Larsen Press", "Spoto Press", "Deadlift", "Sumo Deadlift", "Deficit Deadlift", "Overhead Press", "Military Press"]) {
     assert.equal(isMainCompound(name), true, name);
   }
   for (const name of ["Goblet Squat", "Bodyweight Squat", "Bulgarian Split Squat", "Dumbbell Bench Press", "Bench-supported row", "Push-ups", "Ring dips", "Romanian Deadlift", "Single-leg Deadlift", "Trap-Bar Deadlift", "Tuck front lever"]) {
@@ -15,11 +15,12 @@ test("classifies barbell main lifts without pulling accessories or calisthenics 
 });
 
 test("dynamic accessories cannot silently become holds while calisthenics holds keep seconds", () => {
-  for (const name of ["Hamstring Curl", "Cable Rear-delt Fly", "Romanian Deadlift", "Front Lever Row", "Plank Shoulder Taps"]) {
+  for (const name of ["Paused-High Bar", "Paused Low-Bar", "Hamstring Curl", "Cable Rear-delt Fly", "Romanian Deadlift", "Front Lever Row", "Plank Shoulder Taps"]) {
     assert.equal(expectedDoseKind(name), "reps", name);
     assert.ok(exerciseDoseProblems(exercise(name, { kind: "hold", seconds: { min: 5, max: 10 } })).length, name);
   }
-  for (const name of ["Knee-supported Plank", "Tuck Front Lever", "Supported L-sit", "Isometric Cable Row Hold"]) assert.equal(expectedDoseKind(name), "hold", name);
+  for (const name of ["Knee-supported Plank", "Tuck Front Lever", "Supported L-sit", "Isometric Cable Row Hold", "Isometric High-Bar Squat Hold"]) assert.equal(expectedDoseKind(name), "hold", name);
+  assert.equal(isMainCompound("Isometric High-Bar Squat Hold"), false);
   assert.equal(expectedDoseKind("My custom gym movement"), null);
 });
 

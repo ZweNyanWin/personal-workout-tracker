@@ -31,8 +31,11 @@ const CREDENTIAL_NAMES = [
   "VERCEL_TOKEN", "VERCEL_API_TOKEN", "VERCEL_ACCESS_TOKEN", "VERCEL_APP_CLIENT_SECRET", "VERCEL_OIDC_TOKEN",
   "GITHUB_TOKEN", "GITHUB_PAT", "GH_TOKEN",
   "COACH_GATEWAY_TOKEN", "COACH_REMOTE_TOKEN", "GATEWAY_TOKEN", "POWERBUILD_AI_TOKEN",
+  "SMTP_PASSWORD", "SMTP_PASS", "SMTP2GO_API_KEY", "RESEND_API_KEY", "BREVO_API_KEY",
 ];
 const credentialName = `(?:(?:NEXT_PUBLIC_|VITE_)?(?:${CREDENTIAL_NAMES.join("|")}))`;
+const smtpPasswordName = "(?:(?:NEXT_PUBLIC_|VITE_)?SMTP_(?:PASSWORD|PASS))";
+const smtpPasswordField = new RegExp(`^${smtpPasswordName}$`, "i");
 
 function placeholder(value) {
   const text = value.trim().replace(/^(?:sb_(?:secret|publishable)|gh[pousr]|github_pat|vc[piark])_/i, "");
@@ -84,6 +87,16 @@ function plausibleCredential(value) {
     (/[a-z]/.test(value) && /[A-Z]/.test(value)) ||
     (value.length >= 24 && /^[a-z]+$/i.test(value))
   );
+}
+
+function plausibleNamedCredential(name, value) {
+  if (placeholder(value) || publicSupabaseCredential(value)) return false;
+  // Gmail App Passwords are sixteen lowercase letters, often copied as four
+  // spaced groups. Their explicit password field makes them credentials even
+  // without digits/case variation; never classify arbitrary prose this way.
+  if (smtpPasswordField.test(name)
+      && /^(?:[a-z]{16}|[a-z]{4}(?:[ \t]+[a-z]{4}){3})$/.test(value.trim())) return true;
+  return plausibleCredential(value);
 }
 
 function normalizedPath(filePath) {
@@ -152,13 +165,14 @@ export function inspectFile(filePath, contents) {
     if (plausibleCredential(match[1])) add("literal-bearer-credential", match.index);
   }
   const assignments = [
-    new RegExp(`\\b${credentialName}\\s*=\\s*["']([^"'\\r\\n]+)["']`, "gi"),
-    new RegExp(`["']?\\b${credentialName}["']?\\s*:\\s*["']([^"'\\r\\n]+)["']`, "gi"),
-    new RegExp(`^\\s*(?:export\\s+)?${credentialName}\\s*=\\s*([^\\s#"']+)`, "gim"),
+    new RegExp(`\\b(${credentialName})\\s*=\\s*["']([^"'\\r\\n]+)["']`, "gi"),
+    new RegExp(`["']?\\b(${credentialName})["']?\\s*:\\s*["']([^"'\\r\\n]+)["']`, "gi"),
+    new RegExp(`^\\s*(?:export\\s+)?(${credentialName})\\s*=\\s*([^\\s#"']+)`, "gim"),
+    new RegExp(`^[ \\t]*(?:export[ \\t]+)?(${smtpPasswordName})[ \\t]*=[ \\t]*([a-z]{4}(?:[ \\t]+[a-z]{4}){3})(?=[ \\t]*(?:#|$))`, "gim"),
   ];
   for (const pattern of assignments) {
     for (const match of text.matchAll(pattern)) {
-      if (plausibleCredential(match[1])) add("literal-credential-assignment", match.index);
+      if (plausibleNamedCredential(match[1], match[2])) add("literal-credential-assignment", match.index);
     }
   }
   // A quoted PEM header alone can be documentation. Require key-like material,

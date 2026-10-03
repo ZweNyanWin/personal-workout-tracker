@@ -2,6 +2,10 @@ import "server-only";
 import { validGatewayConfig } from "./relay";
 import { COACH_GATEWAY_TIMEOUT_MS } from "./timeouts";
 
+export class GatewayRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 export function gatewayConfiguration() {
   return { url: process.env.COACH_GATEWAY_URL, token: process.env.COACH_GATEWAY_TOKEN,
     appUrl: process.env.NEXT_PUBLIC_APP_URL, development: process.env.NODE_ENV === "development" };
@@ -26,7 +30,7 @@ export async function gatewayCall(path: string, method = "GET", body?: unknown, 
   if (!response.ok) {
     if (response.status === 409) throw new Error("Your Mac is busy with another request or model training. Try again shortly.");
     if (response.status === 429) throw new Error("Too many requests. Please wait before trying again.");
-    if (response.status === 404) throw new Error("This request expired. Your saved draft is kept; generate again.");
+    if (response.status === 404) throw new GatewayRequestError("This request expired. Your saved draft is kept; generate again.", 404);
     throw new Error("Could not reach Tommy. Keep your Mac awake and its connector running.");
   }
   if (!response.body) throw new Error("Empty Mac response.");

@@ -19,6 +19,12 @@ export type Database = {
   public: {
     Tables: {
       platform_operators: CoachingTable<{ user_id: string; created_at: string }, "user_id">;
+      coach_business_invitations: CoachingTable<{
+        id: string; name: string; email: string; invited_by: string; auth_user_id: string | null;
+        status: "sending" | "email_sent" | "email_failed" | "accepted" | "cancelled";
+        failure_code: "recipient_not_authorized" | "email_rate_limit" | "email_service_unavailable" | "server_not_configured" | null;
+        attempt_id: string; last_attempt_at: string; created_at: string; expires_at: string; organization_id: string | null;
+      }, "name" | "email" | "invited_by">;
       coach_organizations: CoachingTable<{
         id: string; name: string; owner_user_id: string; status: "trial" | "active" | "paused";
         plan: "free_test"; created_at: string; updated_at: string;
@@ -627,6 +633,11 @@ export type Database = {
       coach_ai_access: { Args: Record<string, never>; Returns: boolean };
       get_coach_business_metrics: { Args: Record<string, never>; Returns: Json };
       create_coach_business: { Args: { p_name: string; p_coach_email: string }; Returns: string };
+      prepare_coach_business_invitation: { Args: { p_name: string; p_email: string }; Returns: Json };
+      record_coach_invitation_delivery: { Args: { p_invitation_id: string; p_attempt_id: string; p_auth_user_id: string | null; p_failure_code: string | null }; Returns: undefined };
+      get_my_coach_business_invitation: { Args: Record<string, never>; Returns: Json };
+      accept_coach_business_invitation: { Args: Record<string, never>; Returns: string };
+      cancel_coach_business_invitation: { Args: { p_invitation_id: string }; Returns: undefined };
       set_coach_business_status: { Args: { p_organization_id: string; p_status: string }; Returns: undefined };
       add_coach_business_client: { Args: { p_email: string }; Returns: string };
       set_coach_member_role: { Args: { p_user_id: string; p_role: string }; Returns: undefined };

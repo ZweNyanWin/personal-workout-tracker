@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { Building2, ChevronRight, Users, MessageSquare, Activity } from "lucide-react";
-import { NewCoachBusiness } from "@/components/business/business-controls";
+import { NewCoachBusiness, PendingCoachInvitations } from "@/components/business/business-controls";
 import { BusinessStatusBadge } from "@/components/business/business-status";
 
 import type { CoachBusinessMetric } from "@/lib/business/schema";
+import type { CoachInvitation } from "@/lib/business/invitations";
 
-export function PlatformOverview({ businesses, previewMode = false }: { businesses: CoachBusinessMetric[]; previewMode?: boolean }) {
+export function PlatformOverview({ businesses, invitations = [], previewMode = false }: { businesses: CoachBusinessMetric[]; invitations?: CoachInvitation[]; previewMode?: boolean }) {
   const totals = [
     { label: "Coach businesses", value: businesses.length, icon: Building2 },
     { label: "Active clients", value: businesses.reduce((n, b) => n + b.clients, 0), icon: Users },
@@ -19,8 +20,9 @@ export function PlatformOverview({ businesses, previewMode = false }: { business
     </header>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{totals.map(({ label, value, icon: Icon }) => <div key={label} className="rounded-2xl border border-border bg-card p-4"><Icon className="mb-3 h-5 w-5 text-primary" /><p className="text-2xl font-bold tabular-nums">{value}</p><p className="mt-1 text-xs text-muted-foreground">{label}</p></div>)}</div>
     <section className="rounded-2xl border border-border bg-card p-5"><h2 className="mb-4 text-lg font-semibold">Onboard a coach</h2><NewCoachBusiness disabled={previewMode} /></section>
+    <PendingCoachInvitations invitations={invitations} disabled={previewMode} />
     <section className="space-y-3"><h2 className="text-lg font-semibold">Businesses</h2>
-      {businesses.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Add your first verified coach account to start testing.</div>
+      {businesses.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">Invite your first coach to start testing.</div>
         : <div className="grid gap-3 md:grid-cols-2">{businesses.map((business) => <Link key={business.id} href={previewMode ? `/preview/platform?business=${business.id}` : `/platform/businesses/${business.id}`} className="rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-accent/30">
           <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate font-semibold">{business.name}</h3><p className="mt-1 truncate text-xs text-muted-foreground">{business.coach_name ?? business.coach_email}</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{business.coach_email}</p></div><BusinessStatusBadge status={business.status} /></div>
           <div className="mt-5 grid grid-cols-3 gap-2 text-sm"><div><strong className="block tabular-nums">{business.coaches}</strong><span className="text-xs text-muted-foreground">Coaches</span></div><div><strong className="block tabular-nums">{business.clients}</strong><span className="text-xs text-muted-foreground">Clients</span></div><div><strong className="block tabular-nums">{business.active_programs}</strong><span className="text-xs text-muted-foreground">Active plans</span></div></div>

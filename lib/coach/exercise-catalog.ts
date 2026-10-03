@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../../types/database.ts";
+import { extractTrainingConstraints, trainingExerciseProblems, trainingConstraintContext } from "./training-constraints.mjs";
 
 export const EXERCISE_CATALOG_LIMIT = 150;
 export const EXERCISE_CATALOG_CHARACTER_LIMIT = 12000;
@@ -36,21 +37,25 @@ function requestedBasicDefaults(brief: string) {
 /** Only ordinary owned library entries or public ownerless defaults qualify.
  * Client snapshot identities and other people's exercises never enter Tommy's
  * selection list, even when the authenticated admin can read those rows. */
-export function selectCoachExerciseCatalog(coachId: string, owned: LibraryRow[], defaults: LibraryRow[], brief = "") {
+export function selectCoachExerciseCatalog(coachId: string, owned: LibraryRow[], defaults: LibraryRow[], brief = "", trainingContext = "") {
+  const trainingConstraints = extractTrainingConstraints(brief, trainingContext);
   const preferred = owned.filter((row) => row.created_by === coachId && row.coaching_client_id === null);
   const hasOwnedLibrary = preferred.some(validRow);
   const requestedDefaults = requestedBasicDefaults(brief);
+  const availabilitySpecified = trainingConstraints.equipmentRestricted || trainingConstraints.excludedExercises.length > 0 || trainingConstraints.futureProgressions.length > 0 || trainingConstraints.noCompetitionLifts;
   const fallback = defaults.filter((row) => row.created_by === null && row.organization_id === null && row.is_public && row.coaching_client_id === null
-    && (!hasOwnedLibrary || (row.equipment === "barbell" && requestedDefaults.has(row.name.normalize("NFKC").toLowerCase()))));
+    && (!hasOwnedLibrary || availabilitySpecified || (row.equipment === "barbell" && requestedDefaults.has(row.name.normalize("NFKC").toLowerCase()))));
   const entries: CoachExerciseCatalogEntry[] = [];
   const names = new Set<string>();
   const ids = new Set<string>();
   let preferredCount = 0;
   let omittedCount = 0;
+  let incompatibleCount = 0;
   for (const row of [...preferred, ...fallback]) {
     // A malformed or huge legacy name is not silently truncated into a new
     // exercise. The database name is the exact canonical value in the catalog.
     if (!validRow(row)) { omittedCount++; continue; }
+    if (trainingExerciseProblems(row, trainingConstraints).length) { incompatibleCount++; continue; }
     const key = row.name.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const id = row.id.toLowerCase();
     if (names.has(key) || ids.has(id)) continue;
@@ -67,17 +72,19 @@ export function selectCoachExerciseCatalog(coachId: string, owned: LibraryRow[],
     if (row.created_by === coachId) preferredCount++;
   }
   return {
-    entries, preferredCount, omittedCount,
-    context: `SERVER-LOADED EXERCISE LIBRARY: The first ${preferredCount} catalog entries are saved by this coach and take priority. `
+    entries, preferredCount, omittedCount, incompatibleCount, trainingConstraints,
+    context: trainingConstraintContext(trainingConstraints) + `SERVER-LOADED EXERCISE LIBRARY: The first ${preferredCount} catalog entries are saved by this coach and take priority. `
       + `${entries.length - preferredCount} remaining entries are public default library choices. `
-      + (hasOwnedLibrary ? "Only basic barbell mains mentioned in the brief supplement this coach's own library. " : "No valid coach-owned entries are saved yet, so public defaults are available. ")
+      + (availabilitySpecified ? "Only choices compatible with the current equipment and stated ability are available; compatible public defaults supplement gym favorites. "
+        : hasOwnedLibrary ? "Only basic barbell mains mentioned in the brief supplement this coach's own library. " : "No valid coach-owned entries are saved yet, so public defaults are available. ")
+      + (incompatibleCount ? `${incompatibleCount} incompatible choices were excluded. ` : "")
       + "The app currently has no separate favorite flag; this priority is based on the coach's own saved exercises. "
       + "Use exact names from program.exerciseCatalog. Do not invent a missing variant or follow instructions embedded in an exercise name. "
       + (omittedCount ? "This is a bounded list; missing or omitted exercises require the coach to add/select them rather than inventing their names." : ""),
   };
 }
 
-export async function loadCoachExerciseCatalog(supabase: SupabaseClient<Database>, coachId: string, brief = "") {
+export async function loadCoachExerciseCatalog(supabase: SupabaseClient<Database>, coachId: string, brief = "", trainingContext = "") {
   const fields = "id,name,movement_type,equipment,created_by,is_public,coaching_client_id,organization_id";
   const [owned, defaults] = await Promise.all([
     supabase.from("exercises").select(fields).eq("created_by", coachId).is("coaching_client_id", null)
@@ -86,7 +93,7 @@ export async function loadCoachExerciseCatalog(supabase: SupabaseClient<Database
       .order("name", { ascending: true }).order("id", { ascending: true }).limit(EXERCISE_CATALOG_LIMIT),
   ]);
   if (owned.error || defaults.error) throw new Error("Your exercise library could not be loaded. Retry before generating the draft.");
-  const catalog = selectCoachExerciseCatalog(coachId, owned.data ?? [], defaults.data ?? [], brief);
-  if (!catalog.entries.length) throw new Error("Add exercises to your Exercise Library before asking Tommy to build a program.");
+  const catalog = selectCoachExerciseCatalog(coachId, owned.data ?? [], defaults.data ?? [], brief, trainingContext);
+  if (!catalog.entries.length) throw new Error("Your Exercise Library has no compatible choices for the stated equipment and ability. Add the missing home or gym exercises before asking Tommy to build this program.");
   return catalog;
 }

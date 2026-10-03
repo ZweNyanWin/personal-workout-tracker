@@ -32,7 +32,7 @@ function toDraft(row: Tables<"coaching_drafts">): CoachingDraftRecord {
 
 export async function getCoachingWorkspace(memberId: string): Promise<{
   drafts: CoachingDraftRecord[]; profile: CoachingProfile | null;
-  reviewRequests: CoachingReviewRequest[]; available: boolean; error?: string;
+  reviewRequests: CoachingReviewRequest[]; available: boolean; coachId?: string; error?: string;
 }> {
   try {
     uuid.parse(memberId);
@@ -44,7 +44,7 @@ export async function getCoachingWorkspace(memberId: string): Promise<{
     ]);
     const error = drafts.error ?? profile.error ?? reviews.error;
     if (error) throw new Error(error.code === "PGRST205" || error.code === "42P01" ? "Coaching database setup is not available yet" : error.message);
-    return { drafts: (drafts.data ?? []).map(toDraft), profile: profile.data, reviewRequests: reviews.data ?? [], available: true };
+    return { drafts: (drafts.data ?? []).map(toDraft), profile: profile.data, reviewRequests: reviews.data ?? [], available: true, coachId: user.id };
   } catch (error) {
     return { drafts: [], profile: null, reviewRequests: [], available: false, error: errorMessage(error) };
   }

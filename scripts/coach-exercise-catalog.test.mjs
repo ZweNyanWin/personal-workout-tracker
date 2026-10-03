@@ -91,3 +91,34 @@ test("punctuation-equivalent duplicate choices retain the owned canonical name",
   const catalog = selectCoachExerciseCatalog(coach, [row(1, "High Bar Squat", { equipment: "barbell" })], [row(2, "High-Bar Squat", { created_by: null, equipment: "barbell" })], "High-bar squat work");
   assert.deepEqual(catalog.entries.map((entry) => entry.name), ["High Bar Squat"]);
 });
+
+test("a closed home inventory supplements gym favorites with compatible public choices only", () => {
+  const brief = `Home workout, just one week, every day.
+Equipment: two 5kg dumbbells, 5kg resistance band and parallettes.
+No competition-style lifts. I cannot do dips.`;
+  const owned = [
+    row(1, "Barbell Rows", { equipment: "barbell" }), row(2, "Dips", { equipment: "bodyweight" }),
+    row(3, "Cable Fly / Pec Deck"), row(4, "Leg Press", { equipment: "machine" }),
+    row(5, "Plank", { equipment: "bodyweight" }),
+  ];
+  const defaults = [
+    row(6, "Low-Bar Squat", { created_by: null, equipment: "barbell" }),
+    row(7, "Dumbbell Goblet Squat", { created_by: null, equipment: "dumbbell" }),
+    row(8, "Resistance Band Row", { created_by: null, equipment: "bands" }),
+    row(9, "Parallette Push-up", { created_by: null, equipment: "bodyweight" }),
+    row(10, "Plank", { created_by: null, equipment: "bodyweight" }),
+  ];
+  const catalog = selectCoachExerciseCatalog(coach, owned, defaults, brief);
+  assert.deepEqual(catalog.entries.map((entry) => entry.name), ["Plank", "Dumbbell Goblet Squat", "Resistance Band Row", "Parallette Push-up"]);
+  assert.equal(catalog.preferredCount, 1);
+  assert.equal(catalog.incompatibleCount, 5);
+  assert.match(catalog.context, /CURRENT TRAINING AVAILABILITY/);
+  assert.match(catalog.context, /compatible public defaults supplement gym favorites/);
+});
+
+test("client equipment context is used only when the fresh brief has no replacement inventory", () => {
+  const owned = [row(1, "Own Barbell Row", { equipment: "barbell" }), row(2, "Dumbbell Row", { equipment: "dumbbell" })];
+  const profile = "Equipment: barbell and cable machine";
+  assert.deepEqual(selectCoachExerciseCatalog(coach, owned, [], "Write a four-week block", profile).entries.map((entry) => entry.name), ["Own Barbell Row"]);
+  assert.deepEqual(selectCoachExerciseCatalog(coach, owned, [], "Equipment: two 5kg dumbbells. Write a home block", profile).entries.map((entry) => entry.name), ["Dumbbell Row"]);
+});

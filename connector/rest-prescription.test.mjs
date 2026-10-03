@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveBriefRestPrescriptions } from "./rest-prescription.mjs";
+import { resolveBriefRestPrescriptions, applyExplicitRestPrescription } from "./rest-prescription.mjs";
 
 const week = {
   number: 1,
@@ -65,4 +65,32 @@ test("explicit ranges retain their endpoints and out-of-bounds or fractional-sec
   });
   for (const brief of ["Rest 6 to 4 min", "Rest 0.1 min", "Rest 30.5 seconds", "Rest 20 min"]) assert.throws(() => seconds(brief), /explicit rest duration/);
   assert.throws(() => seconds("x".repeat(6001)), /6,000/);
+});
+
+test("Markdown rest labels and repeated round rest preserve the coach's home-workout range", () => {
+  const brief = "> **Rest between sets**: 60–90 seconds (default per coach rule for RPE >7.5)\n- **Rest between rounds**: 60–90 seconds.";
+  for (const entry of resolveBriefRestPrescriptions(brief, week)) {
+    assert.equal(entry.restSeconds, 75);
+    assert.deepEqual(entry.restRangeSeconds, { min: 60, max: 90 });
+  }
+  assert.deepEqual(seconds("**Rest between sets**:\n90 seconds"), [90, 90, 90, 90]);
+});
+
+test("explicit ranges retain minute endpoints in notes with an editable midpoint timer", () => {
+  const exercise = { notes: "Keep the coach's technique cue.", restSeconds: 300, restRangeMinutes: { min: 4, max: 6 } };
+  const prescription = { restSeconds: 75, restRangeSeconds: { min: 60, max: 90 } };
+  assert.equal(applyExplicitRestPrescription(exercise, prescription, true), true);
+  assert.equal(exercise.restSeconds, 75);
+  assert.equal(exercise.restRangeMinutes, undefined);
+  assert.match(exercise.notes, /^Keep the coach's technique cue\. Coach rest: 1–1\.5 min; timer starts at 1\.25 min \(editable\)\.$/);
+  applyExplicitRestPrescription(exercise, prescription, true);
+  assert.equal(exercise.notes.match(/Coach rest:/g).length, 1);
+  const lowEffort = { notes: "", restSeconds: 90 };
+  applyExplicitRestPrescription(lowEffort, { restSeconds: 300, restRangeSeconds: { min: 240, max: 360 } }, false);
+  assert.equal(lowEffort.restRangeMinutes, undefined);
+  assert.match(lowEffort.notes, /Coach rest: 4–6 min/);
+  const exact = { notes: "Original notes", restSeconds: 300, restRangeMinutes: { min: 4, max: 6 } };
+  applyExplicitRestPrescription(exact, { restSeconds: 90 }, true);
+  assert.deepEqual(exact, { notes: "Original notes", restSeconds: 90 });
+  assert.equal(applyExplicitRestPrescription(exact, {}, true), false);
 });

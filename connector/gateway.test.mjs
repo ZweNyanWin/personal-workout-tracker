@@ -166,6 +166,46 @@ test("rejects non-JSON, malformed JSON and oversized wire bodies", async (t) => 
   assert.equal(calls.length, 0);
 });
 
+test("program training context is bounded data and cannot choose another provider", async (t) => {
+  const { start, calls } = await setup(t);
+  const program = { brief: "Home workout for one week", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 } };
+  for (const extra of [
+    { trainingContext: { equipment: "bodyweight" } },
+    { trainingContext: null },
+    { trainingContext: [] },
+    { trainingContext: 42 },
+    { trainingContext: "x".repeat(8001) },
+    { trainingContext: "Home only", model: "another-model" },
+    { trainingContext: "Home only", url: "https://example.invalid" },
+  ]) {
+    assert.equal((await start({ userId: USER, messages: MESSAGES, program: { ...program, ...extra } })).status, 400);
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("the entire maximum-size saved training context reaches the program runner without losing trailing limitations", async (t) => {
+  const suffix = "Current limitation: I cannot do dips.";
+  const trainingContext = "x".repeat(8000 - suffix.length) + suffix;
+  const received = [];
+  const { start, poll, calls } = await setup(t, { generateProgramImpl: async ({ program }) => {
+    received.push(program);
+    return { title: "Synthetic boundary draft", assumptions: [], weeks: [] };
+  } });
+  const response = await start({ userId: USER, messages: MESSAGES, program: {
+    brief: "Home workout for one week", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 },
+    exerciseCatalog: [{ id: USER, name: "Push-ups", equipment: "bodyweight" }], trainingContext,
+  } });
+  assert.equal(response.status, 202);
+  const completed = await terminal(poll, response.body.jobId);
+  assert.equal(completed.body.status, "completed");
+  assert.equal(received.length, 1);
+  assert.equal(received[0].trainingContext, trainingContext);
+  assert.equal(received[0].trainingContext.length, 8000);
+  assert.ok(received[0].trainingContext.endsWith(suffix), "The final saved limitation is preserved");
+  assert.doesNotMatch(JSON.stringify(completed.body), /Current limitation/);
+  assert.equal(calls.length, 0, "The runner dependency is local test-only; no Ollama or external call occurs");
+});
+
 test("accepts a valid multibyte conversation above the old 32KiB byte limit", async (t) => {
   const { start, poll, calls } = await setup(t);
   const body = { userId: USER, messages: Array.from({ length: 11 }, (_, index) => ({
@@ -254,6 +294,28 @@ test("enforces independent per-user minute/hour rates and expires results", asyn
   assert.equal((await poll(firstId)).status, 404);
   time += 3600001;
   assert.equal((await start()).status, 202);
+});
+
+test("completed programs remain recoverable through a suspended browser for 24 hours, with ownership enforced", async (t) => {
+  let time = 1000000;
+  const output = { title: "Home day", assumptions: ["Synthetic fixture"], progression: "Coach reviews", regression: "Coach reviews", week: {
+    number: 1, focus: "Home", days: [{ number: 1, title: "Home", warmup: "Gradual familiar movement", exercises: [{
+      name: "Push-ups", sets: 2, dose: { kind: "reps", range: { min: 5, max: 5 }, perSide: false },
+      loadOrAssistance: "Bodyweight", effort: "RPE 6", restSeconds: 60, restIsExplicit: false, notes: "",
+    }] }],
+  } };
+  const { start, poll } = await setup(t, { now: () => time, fetchImpl: async () => result(JSON.stringify(output)) });
+  const started = await start({ userId: USER, messages: MESSAGES, program: {
+    brief: "Home workout for one week, one day. Equipment: none.", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 },
+    exerciseCatalog: [{ id: USER, name: "Push-ups", equipment: "bodyweight" }],
+  } });
+  assert.equal(started.status, 202);
+  assert.equal((await terminal(poll, started.body.jobId)).body.status, "completed");
+  time += 60 * 60 * 1000;
+  assert.equal((await poll(started.body.jobId)).body.status, "completed");
+  assert.equal((await poll(started.body.jobId, OTHER_USER)).status, 404);
+  time += 23 * 60 * 60 * 1000;
+  assert.equal((await poll(started.body.jobId)).status, 404);
 });
 
 test("clamps generated text, visibly marks token truncation, and rejects incomplete/oversized upstream responses", async (t) => {

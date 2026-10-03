@@ -375,3 +375,72 @@ test("focused existing source load spellings remain exact through schema and pre
   assert.equal(dayCalls, 3);
   assert.deepEqual(draft.weeks[0].days.map((day) => day.exercises[0].loadOrAssistance), ["medium", "medium", "medium"]);
 });
+
+test("a one-week home draft filters gym favorites, repairs a wrong load and preserves the written rest range", async () => {
+  const entry = (number, name, equipment) => ({ id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`, name, equipment });
+  const home = week(1, 7);
+  for (const day of home.week.days) {
+    day.exercises = [
+      { name: "Parallette Push-up", sets: 3, dose: { kind: "reps", range: { min: 8, max: 12 }, perSide: false }, loadOrAssistance: "Bodyweight on parallettes", effort: "RPE 7", restSeconds: 300, restIsExplicit: false, notes: "" },
+      { name: "Dumbbell Goblet Squat", sets: 3, dose: { kind: "reps", range: { min: 10, max: 10 }, perSide: false }, loadOrAssistance: "5kg dumbbell", effort: "RPE 7", restSeconds: 300, restIsExplicit: false, notes: "" },
+    ];
+  }
+  const catalog = [entry(1, "Barbell Rows", "barbell"), entry(2, "Dips", "bodyweight"), entry(3, "Cable Fly / Pec Deck", "cable"), entry(4, "Leg Press", "machine"),
+    entry(5, "Parallette Push-up", "bodyweight"), entry(6, "Dumbbell Goblet Squat", "dumbbell")];
+  let outlines = 0;
+  const attempts = new Map();
+  const draft = await generateProgram({ program: {
+    brief: `Give me only one week for everyday home workout.
+Equipment: two 5kg dumbbells, 5kg resistance band, parallettes.
+No competition-style lifts. I cannot do dips.
+**Rest between sets**: 60–90 seconds.`,
+    scope: { startWeek: 1, weekCount: 4, daysPerWeek: 4 }, exerciseCatalog: catalog,
+  }, system: "rules", signal: new AbortController().signal, chat: async (body) => {
+    if (body.format.properties.week) {
+      assert.deepEqual(body.format.properties.week.properties.days.items.properties.exercises.items.properties.name.enum, ["Parallette Push-up", "Dumbbell Goblet Squat"]);
+      const outline = structuredClone(home);
+      for (const day of outline.week.days) day.exercises = day.exercises.map(({ name }) => ({ name }));
+      if (++outlines === 1) outline.week.days[0].exercises[1].name = "Cable Fly / Pec Deck";
+      return response(outline);
+    }
+    const number = body.format.properties.day.properties.number.const;
+    const count = (attempts.get(number) ?? 0) + 1; attempts.set(number, count);
+    const day = structuredClone(home.week.days[number - 1]);
+    if (number === 1 && count === 1) day.exercises[1].loadOrAssistance = "7kg dumbbell";
+    return response({ day: wireDay(day) });
+  } });
+  assert.equal(outlines, 2);
+  assert.equal(attempts.get(1), 2);
+  assert.equal(draft.weeks.length, 1);
+  assert.equal(draft.weeks[0].days.length, 7);
+  for (const day of draft.weeks[0].days) {
+    assert.deepEqual(day.exercises.map(({ name }) => name), ["Parallette Push-up", "Dumbbell Goblet Squat"]);
+    assert.equal(day.exercises[1].loadOrAssistance, "5kg dumbbell");
+    assert.equal(day.exercises[1].dose.range.min, 10);
+    for (const exercise of day.exercises) {
+      assert.equal(exercise.restSeconds, 75);
+      assert.equal(exercise.restRangeMinutes, undefined);
+      assert.match(exercise.notes, /Coach rest: 1–1.5 min; timer starts at 1.25 min/);
+    }
+  }
+});
+
+test("repeated invented home loads fail rather than silently becoming the available dumbbell weight", async () => {
+  const value = week(1, 1);
+  value.week.days[0].exercises = [{ name: "Dumbbell Goblet Squat", sets: 2, dose: { kind: "reps", range: { min: 10, max: 10 }, perSide: false },
+    loadOrAssistance: "115kg dumbbell", effort: "RPE 7", restSeconds: 120, restIsExplicit: false, notes: "" }];
+  let attempts = 0;
+  await assert.rejects(generateProgram({ program: { brief: "Home workout. Equipment: two 5kg dumbbells.", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 },
+    exerciseCatalog: [{ id: "00000000-0000-4000-8000-000000000001", name: "Dumbbell Goblet Squat", equipment: "dumbbell" }] },
+    system: "rules", signal: new AbortController().signal, chat: async () => { attempts++; return response(value); } }), /supplied 5 kg/);
+  assert.equal(attempts, 3);
+});
+
+test("an entirely incompatible saved catalog stops before consuming a model call", async () => {
+  let calls = 0;
+  await assert.rejects(generateProgram({ program: { brief: "Home workout. No equipment. I cannot do dips.", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 },
+    exerciseCatalog: [{ id: "00000000-0000-4000-8000-000000000001", name: "Dips", equipment: "bodyweight" },
+      { id: "00000000-0000-4000-8000-000000000002", name: "Barbell Row", equipment: "barbell" }] },
+    system: "rules", signal: new AbortController().signal, chat: async () => { calls++; return response(week(1)); } }), /no choices compatible/);
+  assert.equal(calls, 0);
+});
