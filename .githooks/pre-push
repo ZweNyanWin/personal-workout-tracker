@@ -1,0 +1,4 @@
+#!/bin/sh
+# Check reachable local history before any Git upload. Never print matched keys.
+set -eu
+node scripts/secret-guard.mjs --history

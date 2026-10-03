@@ -81,7 +81,7 @@ test("unspecified rest above RPE 7.5 gets a 4–6 minute suggestion with a 5 min
 });
 
 test("explicit coach rest and existing source prescriptions remain exact", async () => {
-  for (const brief of ["Top single at RPE 8, rest 3 min", "3 minutes rest after each set", "Rest: 3", "Rest between sets:\n180 seconds"]) {
+  for (const brief of ["Top single at RPE 8, rest 3 min", "3 minutes rest after each set", "Rest: 3", "Rest between sets:\n180 seconds", "Rest between sets is exactly 3 minutes."]) {
     const draft = await generateProgram({ program: { brief, scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 } },
       system: "rules", signal: new AbortController().signal, chat: async () => response(week(1, 1)) });
     const item = draft.weeks[0].days[0].exercises[0];
@@ -133,6 +133,7 @@ test("duplicate days, missing exercise dose and truncation fail rather than retu
     (w) => { w.week.days[1].number = 1; },
     (w) => { delete w.week.days[0].exercises[0].effort; },
     (w) => { w.week.days[0].exercises[0].dose.range.max = 0; },
+    (w) => { w.week.days[0].exercises[0].loadOrAssistance = ""; },
   ]) {
     let calls = 0;
     await assert.rejects(generateProgram({ program: request, signal: new AbortController().signal, system: "rules",
@@ -234,4 +235,143 @@ test("explicit one-week daily brief replaces a stale four-week scope at the gene
   assert.deepEqual(draft.weeks[0].days.map((day) => day.number), [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(calls.length, 8);
   assert.equal(calls[0].format.properties.week.properties.days.maxItems, 7);
+});
+
+test("focused home generation preserves bodyweight, written kg loads and bilateral doses through repair", async () => {
+  const home = week(1, 3);
+  for (const day of home.week.days) {
+    day.title = `Home day ${day.number}`;
+    day.exercises = [
+      { name: "Push-ups", sets: 3, dose: { kind: "reps", range: { min: 8, max: 8 }, perSide: false }, loadOrAssistance: "Bodyweight", effort: "RPE 6", restSeconds: 120, restIsExplicit: true, notes: "" },
+      { name: "Goblet Squat", sets: 3, dose: { kind: "reps", range: { min: 10, max: 10 }, perSide: false }, loadOrAssistance: "5 kg dumbbell", effort: "RPE 6", restSeconds: 120, restIsExplicit: true, notes: "" },
+      { name: "Plank", sets: 2, dose: { kind: "hold", seconds: { min: 30, max: 30 } }, loadOrAssistance: "Bodyweight", effort: "Stop before position loss", restSeconds: 120, restIsExplicit: true, notes: "" },
+    ];
+  }
+  const dayAttempts = new Map();
+  const draft = await generateProgram({
+    program: { brief: "Keep all source prescriptions exactly unchanged for this three-day home week.", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 3 }, sourceWeeks: [home.week] },
+    signal: new AbortController().signal, system: "rules", chat: async (body) => {
+      if (body.format.properties.week) {
+        const outline = structuredClone(home);
+        for (const day of outline.week.days) day.exercises = day.exercises.map(({ name }) => ({ name }));
+        return response(outline);
+      }
+      const number = body.format.properties.day.properties.number.const;
+      const day = structuredClone(home.week.days[number - 1]);
+      const attempt = (dayAttempts.get(number) ?? 0) + 1;
+      dayAttempts.set(number, attempt);
+      if (number === 1 && attempt === 1) {
+        // Reproduce the observed erroneous response, then let the model repair
+        // it; the controller must not silently rewrite the coach's prescriptions.
+        day.exercises[0].dose.perSide = true;
+        for (const exercise of day.exercises) exercise.loadOrAssistance = "Choose an external load for the prescribed RPE";
+      }
+      return response({ day: wireDay(day) });
+    },
+  });
+  assert.equal(dayAttempts.get(1), 2);
+  assert.equal(dayAttempts.get(2), 1);
+  assert.equal(dayAttempts.get(3), 1);
+  for (const day of draft.weeks[0].days) {
+    assert.deepEqual(day.exercises.map(({ name, loadOrAssistance, dose }) => ({ name, loadOrAssistance, dose })),
+      home.week.days[day.number - 1].exercises.map(({ name, loadOrAssistance, dose }) => ({ name, loadOrAssistance, dose })));
+    assert.equal(day.exercises[0].dose.perSide, false);
+    assert.equal(day.exercises[1].dose.perSide, false);
+    assert.equal(day.exercises[2].dose.kind, "hold");
+  }
+});
+
+test("generated equipment-named movements reject bodyweight-only loads and repair without rewriting doses", async () => {
+  for (const name of ["Resistance Band Row", "Dumbbell Row", "Kettlebell Swing", "Cable Row", "Barbell Row", "Smith Incline Press", "Weighted Pull-up"]) {
+    let attempts = 0;
+    const generated = week(1, 1);
+    generated.week.days[0].exercises = [{ name, sets: 2, dose: { kind: "reps", range: { min: 10, max: 10 }, perSide: false },
+      loadOrAssistance: "Bodyweight", effort: "Easy, comfortable effort", restSeconds: 120, restIsExplicit: true, notes: "" }];
+    const draft = await generateProgram({ program: { brief: "An easy home recovery day. Keep the movement and repetition dose; choose compatible assistance.", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 } },
+      signal: new AbortController().signal, system: "rules", chat: async () => {
+        const candidate = structuredClone(generated);
+        if (++attempts === 2) candidate.week.days[0].exercises[0].loadOrAssistance = name === "Resistance Band Row" ? "Light resistance band" : "Choose a comfortable external load";
+        return response(candidate);
+      } });
+    assert.equal(attempts, 2, name);
+    assert.equal(draft.weeks[0].days[0].exercises[0].name, name);
+    assert.deepEqual(draft.weeks[0].days[0].exercises[0].dose, generated.week.days[0].exercises[0].dose);
+    assert.equal(draft.weeks[0].days[0].exercises[0].effort, "Easy, comfortable effort");
+  }
+});
+
+test("equipment qualifiers and added weight retain legitimate bodyweight-plus-assistance prescriptions", async () => {
+  const items = [
+    ["Band-Assisted Pull-up", "Bodyweight with band assistance"],
+    ["Weighted Push-up", "Bodyweight plus 5 kg added load"],
+    ["Smith Incline Push-up", "Bodyweight against the Smith bar"],
+    ["Push-ups", "Bodyweight"],
+  ];
+  const candidate = week(1, 1);
+  candidate.week.days[0].exercises = items.map(([name, loadOrAssistance]) => ({ name, loadOrAssistance, sets: 2,
+    dose: { kind: "reps", range: { min: 8, max: 8 }, perSide: false }, effort: "RPE 6", restSeconds: 120, restIsExplicit: true, notes: "" }));
+  const draft = await generateProgram({ program: { brief: "Keep the existing exercise prescriptions exactly unchanged", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 }, sourceWeeks: [candidate.week] },
+    signal: new AbortController().signal, system: "rules", chat: async () => response(candidate) });
+  assert.deepEqual(draft.weeks[0].days[0].exercises.map((item) => [item.name, item.loadOrAssistance]), items);
+});
+
+test("a persistent bodyweight-only band row fails instead of returning a contradictory draft", async () => {
+  let attempts = 0;
+  const candidate = week(1, 1);
+  candidate.week.days[0].exercises = [{ ...candidate.week.days[0].exercises[1], name: "Resistance Band Row", loadOrAssistance: "Bodyweight, no external load" }];
+  await assert.rejects(generateProgram({ program: { brief: "Create an easy band row session", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 } },
+    signal: new AbortController().signal, system: "rules", chat: async () => { attempts++; return response(candidate); } }), /names equipment or added weight/);
+  assert.equal(attempts, 3);
+});
+
+test("generic load wording and equipment written only in notes do not excuse bodyweight-only carries", async () => {
+  for (const load of ["Bodyweight load", "Loaded bodyweight", "BW load", "Unweighted load", "Bodyweight, no added load", "Bodyweight without dumbbells"]) {
+    let attempts = 0;
+    const candidate = week(1, 1);
+    candidate.week.days[0].exercises = [{ name: "Dumbbell Farmer's Carry", sets: 2,
+      dose: { kind: "hold", seconds: { min: 30, max: 30 } }, loadOrAssistance: load,
+      effort: "Easy, comfortable effort", restSeconds: 120, restIsExplicit: true,
+      notes: "Carry the coach's two 5 kg dumbbells." }];
+    await assert.rejects(generateProgram({ program: { brief: "Use two 5 kg dumbbells for the carry. Keep an easy effort.", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 1 } },
+      signal: new AbortController().signal, system: "rules", chat: async () => { attempts++; return response(candidate); } }), /names equipment or added weight/, load);
+    assert.equal(attempts, 3, load);
+  }
+});
+
+test("focused load patterns require equipment or a numeric load without inventing a magnitude", () => {
+  const day = { number: 1, exercises: [{ name: "Dumbbell Farmer's Carry" }, { name: "Resistance Band Row" }, { name: "Push-ups" }, { name: "Barbell Squat" }] };
+  const groups = dayOutputSchema(1, day).properties.day.properties.exercises.properties;
+  const carry = new RegExp(groups.group1.properties.loadOrAssistance.pattern);
+  for (const valid of ["Two 5 kg dumbbells", "Dumbbells; working weight not supplied", "5kg each hand", "Bodyweight plus 5 kg dumbbells"]) assert.ok(carry.test(valid), valid);
+  for (const invalid of ["Bodyweight", "Bodyweight load", "Loaded bodyweight", "BW", "Medium"]) assert.equal(carry.test(invalid), false, invalid);
+  for (const unsafe of ['Dumbbells"},"anotherField":5', "Dumbbells\\n", "Dumbbells\n", `${"A".repeat(81)}Dumbbells`, `Dumbbells${"A".repeat(161)}`]) assert.equal(carry.test(unsafe), false);
+  const band = new RegExp(groups.group2.properties.loadOrAssistance.pattern);
+  for (const valid of ["Resistance band; tension not supplied", "Bodyweight with band assistance", "medium"]) assert.ok(band.test(valid), valid);
+  for (const invalid of ["Bodyweight", "Bodyweight load", "5kg"]) assert.equal(band.test(invalid), false, invalid);
+  assert.equal(groups.group3.properties.loadOrAssistance.pattern, undefined);
+  // Barbell mains retain their existing external-load-selection contract.
+  assert.equal(groups.group4.properties.loadOrAssistance.pattern, undefined);
+});
+
+test("focused existing source load spellings remain exact through schema and preservation checks", async () => {
+  const original = week(1, 3);
+  for (const day of original.week.days) day.exercises = [{ name: "Resistance Band Row", sets: 2,
+    dose: { kind: "reps", range: { min: 10, max: 10 }, perSide: false },
+    loadOrAssistance: "medium", effort: "RPE 6", restSeconds: 120, restIsExplicit: true, notes: "" }];
+  let dayCalls = 0;
+  const draft = await generateProgram({ program: { brief: "Keep all existing source prescriptions exactly unchanged.",
+    scope: { startWeek: 1, weekCount: 1, daysPerWeek: 3 }, sourceWeeks: [original.week] },
+    signal: new AbortController().signal, system: "rules", chat: async (body) => {
+      if (body.format.properties.week) {
+        const outline = structuredClone(original);
+        for (const day of outline.week.days) day.exercises = day.exercises.map(({ name }) => ({ name }));
+        return response(outline);
+      }
+      dayCalls++;
+      assert.equal(body.format.properties.day.properties.exercises.properties.group1.properties.loadOrAssistance.pattern, undefined);
+      const number = body.format.properties.day.properties.number.const;
+      return response({ day: wireDay(original.week.days[number - 1]) });
+    } });
+  assert.equal(dayCalls, 3);
+  assert.deepEqual(draft.weeks[0].days.map((day) => day.exercises[0].loadOrAssistance), ["medium", "medium", "medium"]);
 });

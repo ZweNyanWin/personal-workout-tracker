@@ -20,6 +20,15 @@
 /ai/knowledge/uploaded-personal-plans.json
 /ai/knowledge/program-examples.json
 /ai/knowledge/build_uploaded_personal_plans.py
+/docs/vault/
+*.gguf
+*.safetensors
+*.ckpt
+*.pth
+*.onnx
+/connector/config.json
+/connector/runtime/
+/connector/logs/
 
 # next.js
 /.next/
@@ -31,6 +40,9 @@
 # misc
 .DS_Store
 *.pem
+*.key
+*id_rsa
+*id_ed25519
 
 # debug
 npm-debug.log*

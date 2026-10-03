@@ -1,0 +1,42 @@
+name: Security guards
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'codex/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Build-only public placeholders; this job has no production credentials.
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: public-test-placeholder
+      NEXT_PUBLIC_APP_URL: https://powerbuild.example
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Inspect tracked source
+        run: npm run security:secrets && npm run security:history
+      - name: Install app dependencies
+        run: npm ci
+      - name: Cache the pinned deployment collector
+        run: npm exec --yes --package=vercel@62.0.0 -- vercel --version
+      - name: Build the browser artifacts
+        run: npm run build
+      - name: Test negative cases and audit the upload list and browser build
+        run: node --experimental-strip-types --test scripts/*.test.mjs connector/*.test.mjs && npm run security:deployment

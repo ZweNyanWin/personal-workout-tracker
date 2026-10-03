@@ -1,3 +1,4 @@
+import "server-only";
 import { validGatewayConfig } from "./relay";
 import { COACH_GATEWAY_TIMEOUT_MS } from "./timeouts";
 

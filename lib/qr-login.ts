@@ -1,3 +1,4 @@
+import "server-only";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
