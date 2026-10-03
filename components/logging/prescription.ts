@@ -12,6 +12,6 @@ export function doseLabel(
   const amount =
     range.min === range.max ? String(range.min) : `${range.min}–${range.max}`;
   return dose.kind === "hold"
-    ? `${amount} sec hold`
+    ? `${amount} sec`
     : `${amount} reps${dose.perSide ? " / side" : ""}`;
 }

@@ -68,7 +68,7 @@ export function SetRow({
     ) {
       toast.error(
         isHold
-          ? "Enter completed hold seconds before marking complete"
+          ? "Enter completed duration in seconds before marking complete"
           : "Enter completed reps; weight is optional for bodyweight work",
       );
       return;
@@ -199,7 +199,7 @@ export function SetRow({
         onBlur={handleBlurSave}
         placeholder={isHold ? "sec" : (planned?.target_reps ?? "reps")}
         min="1"
-        aria-label={`${isHold ? "Hold seconds" : "Repetitions"} for set ${set.set_number}`}
+        aria-label={`${isHold ? "Duration in seconds" : "Repetitions"} for set ${set.set_number}`}
         className={cn(
           "w-16 h-10 rounded-lg border bg-background px-2 text-center text-base md:text-sm font-bold font-num",
           "focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground/50",

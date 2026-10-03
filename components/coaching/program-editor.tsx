@@ -243,7 +243,7 @@ function ExerciseEditor({
   const main = isMainCompound(exercise.name);
   const mainIssues = [...mainCompoundProblems(exercise), ...exerciseDoseProblems(exercise)];
   const amount = range.min === range.max ? String(range.min) : `${range.min}–${range.max}`;
-  const summary = `${exercise.sets} × ${amount} ${dose.kind === "hold" ? "sec hold" : "reps"} · ${exercise.effort || "effort needed"}`;
+  const summary = `${exercise.sets} × ${amount} ${dose.kind === "hold" ? "sec" : "reps"} · ${exercise.effort || "effort needed"}`;
   const kindId = useId();
   const perSideId = useId();
   function updateRange(key: "min" | "max", value: number) {
@@ -316,7 +316,7 @@ function ExerciseEditor({
                   : { kind: "reps", range: { min: main ? 0 : 5, max: main ? 0 : 8 }, perSide: false } })}
               >
                 <option value="reps">Repetitions</option>
-                <option value="hold">Hold · seconds</option>
+                <option value="hold">Timed · seconds</option>
               </select>
             </div>
             <NumberField

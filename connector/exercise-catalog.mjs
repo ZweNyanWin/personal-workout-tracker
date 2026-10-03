@@ -2,6 +2,7 @@ const normalize = (name) => String(name ?? "").normalize("NFKC").toLowerCase().r
 const groupLabel = "(?:top\\s+(?:set|single)|backdowns?|back[- ]?off(?:\\s+sets?)?|technique|primary|secondary)";
 const groupSuffix = new RegExp(`\\s*(?:[—–-]\\s*${groupLabel}|\\(\\s*${groupLabel}\\s*\\)|\\s+${groupLabel})\\s*$`, "i");
 const withoutGroupLabel = (name) => String(name ?? "").replace(groupSuffix, "").trim();
+import { trainingWeekProblems } from "../lib/coach/training-constraints.mjs";
 
 export function validateExerciseCatalog(value) {
   if (value === undefined) return [];
@@ -22,12 +23,11 @@ export function validateExerciseCatalog(value) {
   return value;
 }
 
-export function exerciseCatalogProblems(week, catalog = []) {
-  if (!catalog.length) return [];
+export function exerciseCatalogProblems(week, catalog = [], constraints) {
   const allowed = new Set(catalog.map((item) => normalize(item.name)));
-  const issues = [];
+  const issues = constraints ? trainingWeekProblems(week, constraints, catalog) : [];
   for (const day of week.days ?? []) for (const exercise of day.exercises ?? []) {
-    if (!allowed.has(normalize(exercise.name)) && !allowed.has(normalize(withoutGroupLabel(exercise.name)))) {
+    if (catalog.length && !allowed.has(normalize(exercise.name)) && !allowed.has(normalize(withoutGroupLabel(exercise.name)))) {
       issues.push(`Day ${day.number} includes an exercise outside the coach's saved library. Choose an exact library name or ask the coach to add the missing variation.`);
     }
   }

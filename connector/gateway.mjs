@@ -97,7 +97,7 @@ function validateConversation(value) {
   let program;
   if (value.program !== undefined) {
     const p = value.program;
-    if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).some((key) => !["scope", "brief", "sourceWeeks", "exerciseCatalog"].includes(key))
+    if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).some((key) => !["scope", "brief", "sourceWeeks", "exerciseCatalog", "trainingContext"].includes(key))
       || typeof p.brief !== "string" || !p.brief.trim() || p.brief.length > 6000 || !p.scope
       || Object.keys(p.scope).some((key) => !["startWeek", "weekCount", "daysPerWeek"].includes(key))
       || !Number.isInteger(p.scope.startWeek) || p.scope.startWeek < 1 || p.scope.startWeek > 52
@@ -105,10 +105,11 @@ function validateConversation(value) {
       || p.scope.startWeek + p.scope.weekCount - 1 > 52
       || !Number.isInteger(p.scope.daysPerWeek) || p.scope.daysPerWeek < 1 || p.scope.daysPerWeek > 7) throw new HttpError(400, "Invalid program request.");
     if (p.sourceWeeks !== undefined && (!Array.isArray(p.sourceWeeks) || p.sourceWeeks.length > 16 || JSON.stringify(p.sourceWeeks).length > 160000)) throw new HttpError(400, "Source draft is too large.");
+    if (p.trainingContext !== undefined && (typeof p.trainingContext !== "string" || p.trainingContext.length > 8000)) throw new HttpError(400, "Invalid training context.");
     let exerciseCatalog;
     try { exerciseCatalog = validateExerciseCatalog(p.exerciseCatalog); }
     catch { throw new HttpError(400, "Invalid coach exercise library."); }
-    program = { brief: p.brief.trim(), scope: p.scope, sourceWeeks: p.sourceWeeks, exerciseCatalog };
+    program = { brief: p.brief.trim(), scope: p.scope, sourceWeeks: p.sourceWeeks, exerciseCatalog, trainingContext: p.trainingContext ?? "" };
   }
   return { userId: value.userId, messages, context: value.context ?? "", program };
 }
@@ -150,10 +151,12 @@ async function localTrainingBusy() {
 export function createGateway({
   token,
   fetchImpl = globalThis.fetch,
+  generateProgramImpl = generateProgram,
   isTrainingBusy = localTrainingBusy,
   now = Date.now,
   generationTimeoutMs = 150000,
   jobTtlMs = 600000,
+  programJobTtlMs = 24 * 60 * 60 * 1000,
   references = [],
   referenceOwnerId,
 } = {}) {
@@ -188,7 +191,8 @@ export function createGateway({
     const time = now();
     for (const [id, job] of jobs) {
       // Active multi-week generation has its own deadline and must not expire mid-block.
-      if (job.finishedAt && time - job.finishedAt >= jobTtlMs) { jobs.delete(id); }
+      const retention = job.isProgram ? programJobTtlMs : jobTtlMs;
+      if (job.finishedAt && time - job.finishedAt >= retention) { jobs.delete(id); }
     }
     for (const [userId, timestamps] of users) {
       const recent = timestamps.filter((timeStamp) => time - timeStamp < 3600000);
@@ -243,7 +247,7 @@ export function createGateway({
       }));
       if (program) {
         const ownedReferences = job.userId === referenceOwnerId ? references : [];
-        const draft = await generateProgram({ program, context, system: SYSTEM, chat, signal: job.controller.signal, references: ownedReferences,
+        const draft = await generateProgramImpl({ program, context, system: SYSTEM, chat, signal: job.controller.signal, references: ownedReferences,
           progress: (value) => { job.progress = value; } });
         if (job.status !== "running") return;
         const answer = JSON.stringify(draft);
@@ -326,7 +330,7 @@ export function createGateway({
         if (active) throw new HttpError(409, "The Mac coach is busy. Try again shortly.");
         if (jobs.size >= MAX_JOBS) throw new HttpError(429, "The Mac coach is busy. Try again later.");
         takeRate(userId);
-        const job = { id: randomUUID(), userId, status: "running", createdAt: now(), controller: new AbortController() };
+        const job = { id: randomUUID(), userId, status: "running", isProgram: Boolean(program), createdAt: now(), controller: new AbortController() };
         jobs.set(job.id, job);
         active = job;
         // Cancel a dispatch that closes before its response is written. Later

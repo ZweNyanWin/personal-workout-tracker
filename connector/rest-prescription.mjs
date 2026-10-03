@@ -6,7 +6,7 @@ const hasPhrase = (text, phrase) => (` ${normalize(text)} `).includes(` ${phrase
 const groupSuffix = /\s*(?:[—–-]\s*|\(\s*|\s+)(?:top\s+(?:set|single)|backdowns?|back[- ]?off(?:\s+sets?)?|technique|primary|secondary)\s*\)?\s*$/i;
 const number = "(\\d+(?:\\.\\d+)?)(?:\\s*(?:[-–—]|to)\\s*(\\d+(?:\\.\\d+)?))?";
 const unit = "(min(?:ute)?s?|sec(?:ond)?s?|m|s)";
-const forward = new RegExp(`\\brest(?:\\s+time)?(?:\\s+(?:between\\s+(?:working\\s+)?sets|after\\s+(?:each\\s+)?sets?|for))?\\s*[:=]?\\s*(?:(?:is|should\\s+be|must\\s+be)\\s+)?(?:exactly\\s+)?${number}\\s*${unit}?(?![\\p{L}\\p{N}.])`, "giu");
+const forward = new RegExp(`\\brest(?:\\s+time)?(?:\\s+(?:between\\s+(?:working\\s+)?(?:sets|rounds)|after\\s+(?:each\\s+)?(?:sets?|rounds?)|for))?\\s*[:=]?\\s*(?:(?:is|should\\s+be|must\\s+be)\\s+)?(?:exactly\\s+)?${number}\\s*${unit}?(?![\\p{L}\\p{N}.])`, "giu");
 const reverse = new RegExp(`\\b${number}\\s*${unit}\\s+(?:of\\s+)?rest\\b`, "giu");
 const groups = [
   ["top single", /\btop\s+single\b/i, /\btop\s+single\b/i],
@@ -29,12 +29,14 @@ function duration(match) {
 
 function segments(brief) {
   // Sentence periods split clauses; decimal duration periods remain intact.
-  const pieces = brief.split(/;|\r?\n|(?<!\d)\.|\.(?!\d)/u);
+  // Formatting around a label must not hide a written duration. Strip only
+  // Markdown emphasis markers; exercise names and numeric units stay intact.
+  const pieces = brief.replace(/\*\*|__/g, "").split(/;|\r?\n|(?<!\d)\.|\.(?!\d)/u);
   const result = [];
   for (let index = 0; index < pieces.length; index++) {
     let text = pieces[index].trim();
     // A labeled multiline rest value belongs to its preceding label.
-    if (/\brest(?:\s+time)?(?:\s+between\s+(?:working\s+)?sets)?\s*[:=]?\s*$/i.test(text)
+    if (/\brest(?:\s+time)?(?:\s+between\s+(?:working\s+)?(?:sets|rounds))?\s*[:=]?\s*$/i.test(text)
       && /^\s*\d+(?:\.\d+)?(?:\s*(?:[-–—]|to)\s*\d+(?:\.\d+)?)?\s*(?:min(?:ute)?s?|sec(?:ond)?s?|m|s)?\s*$/i.test(pieces[index + 1] ?? "")) {
       text += ` ${pieces[++index].trim()}`;
     }
@@ -133,4 +135,29 @@ export function resolveBriefRestPrescriptions(brief, week) {
       ...(prescription?.restRangeSeconds ? { restRangeSeconds: prescription.restRangeSeconds } : {}) });
   }
   return result;
+}
+
+/** Keep the coach's written range visible while giving the existing timer a
+ * concrete default. Only the 4–6 min high-effort suggestion has a dedicated
+ * structured range; other explicit ranges live in notes rather than silently
+ * becoming that suggestion. The timer remains editable in the draft. */
+export function applyExplicitRestPrescription(exercise, prescription, highEffort) {
+  if (prescription?.restSeconds === undefined) return false;
+  exercise.restSeconds = prescription.restSeconds;
+  delete exercise.restRangeMinutes;
+  const range = prescription.restRangeSeconds;
+  if (!range) return true;
+  if (range.min === 240 && range.max === 360 && highEffort) {
+    exercise.restRangeMinutes = { min: 4, max: 6 };
+    return true;
+  }
+  const minutes = (seconds) => String(Number((seconds / 60).toFixed(3)));
+  const note = `Coach rest: ${minutes(range.min)}–${minutes(range.max)} min; timer starts at ${minutes(prescription.restSeconds)} min (editable).`;
+  const current = String(exercise.notes ?? "").trim();
+  if (!current.includes(note)) {
+    const notes = [current, note].filter(Boolean).join(" ");
+    if (notes.length > 1200) throw new Error("Keep coaching notes shorter so the written rest range can be preserved.");
+    exercise.notes = notes;
+  }
+  return true;
 }

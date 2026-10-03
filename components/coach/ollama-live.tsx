@@ -18,7 +18,7 @@ interface Status {
 
 export function OllamaLive() {
   const [status, setStatus] = useState<Status | null>(null);
-  const [question, setQuestion] = useState("My plan includes a 130 kg bench attempt, but I haven't performed it. What can you conclude?");
+  const [question, setQuestion] = useState("My program includes a planned bench attempt, but I haven't performed it. What can you conclude?");
   const [answer, setAnswer] = useState("");
   const [model, setModel] = useState("workout-coach");
   const [running, setRunning] = useState(false);

@@ -12,7 +12,7 @@
 
 -- ─── Profiles ────────────────────────────────────────────────
 INSERT INTO profiles (id, email, full_name, username, role) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'admin@powerbuild.app',   'Zwe Nyan Win', 'zwe',     'admin'),
+  ('00000000-0000-0000-0000-000000000001', 'admin@powerbuild.app',   'Demo Coach',   'demo_coach', 'admin'),
   ('00000000-0000-0000-0000-000000000002', 'alex@powerbuild.app',    'Alex M',       'alex_m',  'member'),
   ('00000000-0000-0000-0000-000000000003', 'jordan@powerbuild.app',  'Jordan K',     'jordan_k','member')
 ON CONFLICT (id) DO UPDATE SET

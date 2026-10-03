@@ -31,6 +31,9 @@ import {
 } from "@/lib/coach/workflow-schema";
 import { CoachingProgramEditor } from "./program-editor";
 import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
+import { createClient } from "@/lib/supabase/client";
+import { withDeadline } from "@/lib/async/deadline";
+import { createDraftSession, createWorkspaceLoadGuard, pendingDraftJob, type DraftJob as Job, type DraftJobState } from "@/lib/coach/draft-session";
 
 const areaClass =
   "min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 md:text-sm";
@@ -41,7 +44,6 @@ const DEFAULT_SCOPE: CoachingScope = {
   weekCount: 4,
   daysPerWeek: 4,
 };
-type Job = { jobId: string; draftId: string; startedAt: number };
 class DraftRequestError extends Error {
   constructor(
     message: string,
@@ -59,7 +61,7 @@ async function request(path: string, options: RequestInit = {}) {
     const response = await fetch(path, {
       cache: "no-store",
       ...options,
-      signal: controller.signal,
+      signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok)
@@ -74,6 +76,22 @@ async function request(path: string, options: RequestInit = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+const draftSession = createDraftSession({
+  poll: (job, signal) => request(`/api/coach/program?jobId=${encodeURIComponent(job.jobId)}&draftId=${encodeURIComponent(job.draftId)}`, { signal }),
+  latest: async (draftId) => { const result = await getCoachingDraft(draftId); return result.success ? result.data : null; },
+  terminalError: (error) => error instanceof DraftRequestError && [401, 403, 409, 410].includes(error.status ?? 0),
+});
+let watchingSessionAuth = false;
+function watchDraftSessionAuth() {
+  if (watchingSessionAuth) return;
+  watchingSessionAuth = true;
+  // This listener belongs to the tab session too, so signing out from another
+  // app page stops old-account polling and clears all private in-memory edits.
+  createClient().auth.onAuthStateChange((_event, session) => {
+    draftSession.verifyBrowserAccount(session?.user.id ?? null);
+  });
 }
 
 function validationMessage(
@@ -175,23 +193,29 @@ export function MemberCoachingWorkspace({
     totalWeeks: number;
   } | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [coachId, setCoachId] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const jobRef = useRef<Job | null>(null);
-  const storageKey = `powerbuild-coaching-job:${memberId}`;
+  const mountedRef = useRef(false);
+  const coachRef = useRef<string | null>(null);
+  const memberRef = useRef(memberId);
   const locked = !!working || !!job;
   const approved = selected?.status === "approved";
   const issue = validationMessage(content, scope);
+  function currentWorkspace(ownerId: string | null, clientId: string) {
+    return mountedRef.current && coachRef.current === ownerId && memberRef.current === clientId;
+  }
 
   function rememberJob(value: Job | null) {
     jobRef.current = value;
     setJob(value);
-    try {
-      if (value) sessionStorage.setItem(storageKey, JSON.stringify(value));
-      else sessionStorage.removeItem(storageKey);
-    } catch {
-      /* Reload recovery remains available through saved drafts. */
+    if (coachRef.current) {
+      if (value) draftSession.track(coachRef.current, memberId, value);
+      else draftSession.forgetJob(coachRef.current, memberId);
     }
+    if (!value) setRetrying(false);
   }
   function chooseDraft(value: CoachingDraftRecord | null) {
     setSelected(value);
@@ -213,6 +237,37 @@ export function MemberCoachingWorkspace({
 
   useEffect(() => {
     let disposed = false;
+    const accountGuard = createWorkspaceLoadGuard();
+    let resolveAccountReady!: () => void;
+    const accountReady = new Promise<void>((resolve) => { resolveAccountReady = resolve; });
+    function clearWorkspace() {
+      coachRef.current = null;
+      jobRef.current = null;
+      setJob(null); setCoachId(null); setBrief(""); setContent(null); setSelected(null);
+      setDrafts([]); setReviewRequests([]); setResolvingReview(null);
+      setProfile({ member_id: memberId, training_context: "", coach_rules: "", nutrition_targets: "" });
+      setScope(DEFAULT_SCOPE); setMode("new"); setProgress(null); setElapsed(0); setRetrying(false);
+      setDirty(false); setProfileDirty(false); setReviewed(false); setWorking(null); setAvailable(false);
+      setNotice(""); setError("");
+    }
+    // Subscribe before dispatching the workspace load: its response can arrive
+    // after a sign-out or account switch, even when the page stays mounted.
+    const authSubscription = previewData ? null : createClient().auth.onAuthStateChange((event, session) => {
+      if (disposed) return;
+      const accountChanged = accountGuard.observeAccount(session?.user.id ?? null);
+      resolveAccountReady();
+      if (event === "SIGNED_OUT" || accountChanged || (coachRef.current && session?.user.id !== coachRef.current)) {
+        draftSession.activate(null);
+        clearWorkspace();
+        setLoading(false);
+        setError("Your sign-in changed. Reopen the client workspace after signing in.");
+      }
+    }).data.subscription;
+    mountedRef.current = true;
+    memberRef.current = memberId;
+    clearWorkspace();
+    setLoading(true);
+    let loadTicket: ReturnType<typeof accountGuard.begin> = null;
     async function load() {
       try {
         if (previewData) {
@@ -222,16 +277,27 @@ export function MemberCoachingWorkspace({
           chooseDraft(previewData.drafts[0] ?? null);
           return;
         }
-        const result = await getCoachingWorkspace(memberId);
+        await withDeadline(() => accountReady, 12_000);
         if (disposed) return;
-        setAvailable(result.available);
+        loadTicket = accountGuard.begin();
+        if (!loadTicket) throw new Error("Sign in to open the client workspace.");
+        const result = await getCoachingWorkspace(memberId);
+        if (disposed || !accountGuard.isCurrent(loadTicket, loadTicket.accountId)) return;
         if (!result.available) {
+          setAvailable(false);
+          draftSession.activate(null);
           setError(
             result.error ??
               "Coaching storage needs setup before you can create and assign drafts.",
           );
           return;
         }
+        if (!result.coachId || !accountGuard.isCurrent(loadTicket, result.coachId)) throw new Error("Could not verify the coaching workspace for this account.");
+        setAvailable(true);
+        draftSession.activate(result.coachId);
+        watchDraftSessionAuth();
+        coachRef.current = result.coachId;
+        setCoachId(result.coachId);
         setDrafts(result.drafts);
         setReviewRequests(result.reviewRequests ?? []);
         if (result.profile) setProfile(result.profile);
@@ -240,39 +306,37 @@ export function MemberCoachingWorkspace({
           result.drafts[0] ??
           null;
         if (first) chooseDraft(first);
-        let restoredJob = false;
+        // Remove the legacy member-only pointer; the authenticated database
+        // row is authoritative and private editor text never goes to storage.
         try {
-          const saved = JSON.parse(
-            sessionStorage.getItem(storageKey) ?? "null",
-          ) as Job | null;
-          if (
-            saved &&
-            typeof saved.jobId === "string" &&
-            typeof saved.draftId === "string" &&
-            Number.isFinite(saved.startedAt) &&
-            Date.now() - saved.startedAt < 30 * 60 * 1000
-          ) {
-            const matching = result.drafts.find(
-              (draft) => draft.id === saved.draftId,
-            );
-            if (matching?.status === "draft") {
-              chooseDraft(matching);
-              rememberJob(saved);
-              restoredJob = true;
-            }
+          sessionStorage.removeItem(`powerbuild-coaching-job:${memberId}`);
+        } catch { /* Browser storage may be disabled. */ }
+        const pending = pendingDraftJob(result.drafts, result.coachId);
+        if (pending) {
+          chooseDraft(pending.draft);
+          rememberJob(pending.job);
+          setNotice("Resumed your saved Tommy job. You can browse other pages while it drafts.");
+        } else {
+          const cached = draftSession.restoreEditor(result.coachId, memberId, result.drafts);
+          if (cached) {
+            setSelected(cached.selectedId ? result.drafts.find((draft) => draft.id === cached.selectedId) ?? null : null);
+            setBrief(cached.brief); setScope(cached.scope); setMode(cached.mode); setContent(cached.content);
+            setProfile(cached.profile); setDirty(cached.dirty); setProfileDirty(cached.profileDirty);
+            setNotice("Restored your workspace from this tab. Save edits to keep them after a reload.");
           }
-        } catch {
-          /* An expired or invalid local recovery record does not affect saved drafts. */
-        }
-        if (!restoredJob) {
-          const runningDraft = result.drafts.find((draft) => draft.status === "draft" && draft.generation_job_id && draft.generation_revision === draft.revision && Date.now() - Date.parse(draft.updated_at) < 30 * 60 * 1000);
-          if (runningDraft?.generation_job_id) {
-            chooseDraft(runningDraft);
-            rememberJob({ jobId: runningDraft.generation_job_id, draftId: runningDraft.id, startedAt: Date.parse(runningDraft.updated_at) });
+          const tracked = draftSession.state(result.coachId, memberId);
+          if (tracked?.status === "completed" && tracked.draft) {
+            acceptSaved(tracked.draft);
+            setNotice("Tommy finished while you were away. The complete draft is saved and ready to review.");
+            draftSession.forgetJob(result.coachId, memberId);
+          } else if (tracked?.status === "failed") {
+            if (tracked.draft) acceptSaved(tracked.draft);
+            setError(tracked.error ?? "Tommy could not complete the draft. Your saved brief is kept.");
+            draftSession.forgetJob(result.coachId, memberId);
           }
         }
       } catch (failure) {
-        if (!disposed)
+        if (!disposed && (!loadTicket || accountGuard.isCurrent(loadTicket, loadTicket.accountId)))
           setError(
             failure instanceof Error
               ? failure.message
@@ -285,113 +349,55 @@ export function MemberCoachingWorkspace({
     void load();
     return () => {
       disposed = true;
+      mountedRef.current = false;
+      authSubscription?.unsubscribe();
     };
-    // Each member has a separate workspace and recovery key.
+    // Verified coach identity scopes all cached workspace fields and jobs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberId, previewData]);
 
   useEffect(() => {
-    if (!job) return;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout>;
-    let failures = 0;
-    const interval = setInterval(
-      () => setElapsed(Math.floor((Date.now() - job.startedAt) / 1000)),
-      1000,
-    );
-    async function poll() {
-      if (disposed || jobRef.current?.jobId !== job!.jobId) return;
-      if (Date.now() - job!.startedAt > 30 * 60 * 1000) {
+    if (!coachId || loading || !available || previewData) return;
+    draftSession.rememberEditor(coachId, memberId, { selectedId: selected?.id ?? null, selectedRevision: selected?.revision ?? null, brief, scope, mode, content, profile, dirty, profileDirty });
+  }, [coachId, memberId, loading, available, previewData, selected, brief, scope, mode, content, profile, dirty, profileDirty]);
+
+  useEffect(() => {
+    if (!coachId) return;
+    function receive(state: DraftJobState) {
+      jobRef.current = state.job;
+      setJob((previous) => previous?.jobId === state.job.jobId ? previous : state.job);
+      if (state.status === "running" && state.draft) acceptSaved(state.draft);
+      if (state.progress) setProgress(state.progress);
+      setRetrying(state.status === "retrying");
+      if (state.status === "completed" && state.draft) {
+        acceptSaved(state.draft);
         rememberJob(null);
-        setError(
-          "Drafting took too long. Your saved brief and previous draft are kept; check the Mac before retrying.",
-        );
-        return;
-      }
-      try {
-        const data = await request(
-          `/api/coach/program?jobId=${encodeURIComponent(job!.jobId)}&draftId=${encodeURIComponent(job!.draftId)}`,
-        );
-        if (disposed || jobRef.current?.jobId !== job!.jobId) return;
-        failures = 0;
-        if (
-          data.progress &&
-          Number.isFinite(data.progress.week) &&
-          Number.isFinite(data.progress.totalWeeks)
-        )
-          setProgress(data.progress);
-        if (data.status === "completed" && data.draft) {
-          acceptSaved(data.draft);
-          rememberJob(null);
-          setNotice(
-            "Draft saved. Review every week, edit prescriptions, then approve and assign.",
-          );
-          return;
-        }
-        if (data.status === "failed") {
-          if (data.draft) acceptSaved(data.draft);
-          rememberJob(null);
-          setError(
-            [
-              data.error ?? "Tommy could not produce a complete draft.",
-              ...(Array.isArray(data.issues)
-                ? data.issues
-                    .filter((value: unknown) => typeof value === "string")
-                    .slice(0, 4)
-                : []),
-            ].join(" "),
-          );
-          return;
-        }
-        if (!["queued", "running"].includes(data.status))
-          throw new Error(
-            "Unexpected drafting status. Your saved brief is kept.",
-          );
-      } catch (failure) {
-        if (disposed) return;
-        if (failure instanceof DraftRequestError && failure.status === 409) {
-          const latest = await getCoachingDraft(job!.draftId).catch(() => null);
-          if (!disposed && latest?.success) acceptSaved(latest.data);
-          if (!disposed) {
-            rememberJob(null);
-            setError(
-              "The draft changed or this generation expired. Your latest saved version is loaded; review it before retrying.",
-            );
-          }
-          return;
-        }
-        failures += 1;
-        setError(
-          failure instanceof Error
-            ? failure.message
-            : "Connection interrupted. Retrying this draft request…",
-        );
-        if (failures >= 10) {
-          const saved = await getCoachingDraft(job!.draftId).catch(() => null);
-          if (!disposed && saved?.success) acceptSaved(saved.data);
-          if (!disposed) {
-            rememberJob(null);
-            setError(
-              "The Mac connection was interrupted. Your latest saved draft is available; check the connection before retrying.",
-            );
-          }
-          return;
-        }
-      }
-      if (!disposed) timer = setTimeout(poll, 5000);
+        setNotice("Draft saved. Review every week, edit prescriptions, then approve and assign.");
+      } else if (state.status === "failed") {
+        if (state.draft) acceptSaved(state.draft);
+        rememberJob(null);
+        setError(state.error ?? "Tommy could not produce a complete draft. Your saved brief is kept.");
+      } else if (state.status === "retrying") setError(state.error ?? "Checking the saved Mac job again…");
+      else setError("");
     }
-    void poll();
-    return () => {
-      disposed = true;
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
-    // Poll the accepted job without resubmitting the brief.
+    const unsubscribe = draftSession.subscribe(coachId, memberId, receive);
+    const unsubscribeDispatch = draftSession.subscribeDispatch(coachId, memberId, (busy) => setWorking((value) => busy ? "start" : value === "start" ? null : value));
+    return () => { unsubscribe(); unsubscribeDispatch(); };
+    // The session poller keeps saving the job result when this page unmounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachId, memberId]);
+
+  useEffect(() => {
+    if (!job) return;
+    const update = () => setElapsed(Math.floor((Date.now() - job.startedAt) / 1000));
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
   }, [job]);
 
   async function save(): Promise<CoachingDraftRecord | null> {
     if (previewData) return null;
+    const ownerId = coachRef.current;
     setError("");
     setNotice("");
     try {
@@ -404,11 +410,13 @@ export function MemberCoachingWorkspace({
         expectedRevision: selected?.revision,
       });
       if (!result.success) throw new Error(result.error);
-      acceptSaved(result.data);
-      setNotice("Draft saved.");
+      if (currentWorkspace(ownerId, memberId)) {
+        acceptSaved(result.data);
+        setNotice("Draft saved.");
+      }
       return result.data;
     } catch (failure) {
-      setError(
+      if (currentWorkspace(ownerId, memberId)) setError(
         failure instanceof Error
           ? failure.message
           : "Could not save. Your edits are kept here.",
@@ -425,7 +433,9 @@ export function MemberCoachingWorkspace({
       );
       return;
     }
+    const ownerId = coachRef.current;
     setWorking("start");
+    if (ownerId) draftSession.dispatch(ownerId, memberId, true);
     setError("");
     setNotice("");
     setProgress(null);
@@ -451,15 +461,17 @@ export function MemberCoachingWorkspace({
       });
       if (typeof data.jobId !== "string" || typeof data.draftId !== "string")
         throw new Error("Drafting could not start. Your brief is kept.");
+      const accepted = { jobId: data.jobId, draftId: data.draftId, startedAt: Date.now() };
+      // Keep the dispatch and completion poll alive even if the initiating
+      // page was left before its acknowledgement returned.
+      if (ownerId) draftSession.track(ownerId, memberId, accepted, data.draft);
+      if (!currentWorkspace(ownerId, memberId)) return;
       if (data.draft) acceptSaved(data.draft);
       setElapsed(0);
-      rememberJob({
-        jobId: data.jobId,
-        draftId: data.draftId,
-        startedAt: Date.now(),
-      });
+      rememberJob(accepted);
       setReviewed(false);
     } catch (failure) {
+      if (!currentWorkspace(ownerId, memberId)) return;
       if (failure instanceof DraftRequestError && failure.draft)
         acceptSaved(failure.draft);
       setError(
@@ -468,42 +480,48 @@ export function MemberCoachingWorkspace({
           : "Could not start drafting. Your brief is kept.",
       );
     } finally {
-      setWorking(null);
+      if (ownerId) draftSession.dispatch(ownerId, memberId, false);
+      if (currentWorkspace(ownerId, memberId)) setWorking(null);
     }
   }
   async function stop() {
     const current = jobRef.current;
     if (!current) return;
+    const ownerId = coachRef.current;
     setWorking("start");
     try {
       const data = await request(
         `/api/coach/program?jobId=${encodeURIComponent(current.jobId)}&draftId=${encodeURIComponent(current.draftId)}`,
         { method: "DELETE" },
       );
+      if (ownerId) draftSession.forgetJob(ownerId, memberId);
+      if (!currentWorkspace(ownerId, memberId)) return;
       if (data.draft) acceptSaved(data.draft);
       rememberJob(null);
       setNotice(
         "Drafting stopped. Your saved brief and previous draft are kept.",
       );
     } catch (failure) {
-      setError(
+      if (currentWorkspace(ownerId, memberId)) setError(
         failure instanceof Error
           ? failure.message
           : "Could not stop drafting; check the Mac connection.",
       );
     } finally {
-      setWorking(null);
+      if (currentWorkspace(ownerId, memberId)) setWorking(null);
     }
   }
   async function assign() {
     if (previewData) return;
     if (!reviewed || issue || !content || approved || locked) return;
+    const ownerId = coachRef.current;
     setWorking("assign");
     try {
       const saved = dirty || !selected ? await save() : selected;
       if (!saved) return;
       const result = await approveCoachingDraft(saved.id, saved.revision);
       if (!result.success) throw new Error(result.error);
+      if (!currentWorkspace(ownerId, memberId)) return;
       acceptSaved({
         ...saved,
         status: "approved",
@@ -514,17 +532,18 @@ export function MemberCoachingWorkspace({
       );
       router.refresh();
     } catch (failure) {
-      setError(
+      if (currentWorkspace(ownerId, memberId)) setError(
         failure instanceof Error
           ? failure.message
           : "Assignment failed. The prior program remains active.",
       );
     } finally {
-      setWorking(null);
+      if (currentWorkspace(ownerId, memberId)) setWorking(null);
     }
   }
   async function saveProfile() {
     if (previewData) return;
+    const ownerId = coachRef.current;
     setWorking("profile");
     setError("");
     setNotice("");
@@ -535,27 +554,30 @@ export function MemberCoachingWorkspace({
         nutrition_targets: profile.nutrition_targets,
       });
       if (!result.success) throw new Error(result.error);
+      if (!currentWorkspace(ownerId, memberId)) return;
       setProfileDirty(false);
       setNotice(
         "Client coaching context saved. Tommy can use these approved facts.",
       );
     } catch (failure) {
-      setError(
+      if (currentWorkspace(ownerId, memberId)) setError(
         failure instanceof Error
           ? failure.message
           : "Could not save client context.",
       );
     } finally {
-      setWorking(null);
+      if (currentWorkspace(ownerId, memberId)) setWorking(null);
     }
   }
   async function resolveReview(id: string) {
     if (previewData) return;
+    const ownerId = coachRef.current;
     setResolvingReview(id);
     setError("");
     try {
       const result = await resolveCoachingReviewRequest(id);
       if (!result.success) throw new Error(result.error);
+      if (!currentWorkspace(ownerId, memberId)) return;
       setReviewRequests((current) =>
         current.map((value) =>
           value.id === id ? { ...value, status: "resolved" } : value,
@@ -563,13 +585,13 @@ export function MemberCoachingWorkspace({
       );
       setNotice("Review request marked resolved.");
     } catch (failure) {
-      setError(
+      if (currentWorkspace(ownerId, memberId)) setError(
         failure instanceof Error
           ? failure.message
           : "Could not resolve this request.",
       );
     } finally {
-      setResolvingReview(null);
+      if (currentWorkspace(ownerId, memberId)) setResolvingReview(null);
     }
   }
 
@@ -888,6 +910,9 @@ export function MemberCoachingWorkspace({
                     Paste your own prescriptions or describe the block. Tommy
                     must preserve explicit sets, reps, variants, and units.
                   </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Your edits stay in this tab while you browse. Save draft keeps them after a reload.
+                  </p>
                   <p className="text-xs font-medium text-primary">
                     {(() => {
                       try {
@@ -933,7 +958,7 @@ export function MemberCoachingWorkspace({
                     role="status"
                   >
                     <LoaderCircle className="h-4 w-4 animate-spin" />
-                    {progress
+                    {retrying ? "Reconnecting to your saved Tommy job…" : progress
                       ? `Drafting week ${progress.week} of ${progress.totalWeeks}`
                       : "Tommy is drafting your block…"}
                   </p>
@@ -950,8 +975,8 @@ export function MemberCoachingWorkspace({
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {elapsed}s elapsed · Complete blocks can take several minutes
-                  on your Mac. Your previous draft and active program stay
-                  available.
+                  on your Mac. You can open other pages; PowerBuild keeps checking
+                  this job and saves the result. Reloading resumes the saved job.
                 </p>
               </div>
             )}

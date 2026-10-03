@@ -121,6 +121,42 @@ test("literal Bearer and legacy assigned credentials are blocked, not env refere
   assert.deepEqual(inspectFile(".env.example", safe), []);
 });
 
+test("named mail sender credentials are redacted, including compact or spaced Gmail App Passwords", () => {
+  const password = [...randomBytes(16)].map((byte) => String.fromCharCode(97 + byte % 26)).join("");
+  const spaced = password.match(/.{4}/g).join(" ");
+  const tabbed = password.match(/.{4}/g).join("\t");
+  for (const name of ["SMTP_PASSWORD", "SMTP_PASS", "NEXT_PUBLIC_SMTP_PASSWORD", "VITE_SMTP_PASS"]) {
+    for (const value of [password, spaced, tabbed]) {
+      for (const assignment of [`${name}="${value}"`, `export ${name}=${value}`, `{"${name}": "${value}"}`]) {
+        const findings = inspectFile("settings.example.ts", `// synthetic runtime fixture\n${assignment}`);
+        assert.deepEqual(findings, [{ type: "literal-credential-assignment", path: "settings.example.ts", line: 2 }]);
+        assert.equal(formatFindings(findings).includes(value), false);
+      }
+    }
+  }
+  for (const name of ["SMTP_PASSWORD", "SMTP_PASS", "SMTP2GO_API_KEY", "RESEND_API_KEY", "BREVO_API_KEY"]) {
+    const value = opaque();
+    const findings = inspectFile(".env.example", `${name}=${value}`);
+    assert.deepEqual(findings, [{ type: "literal-credential-assignment", path: ".env.example", line: 1 }]);
+    assert.equal(formatFindings(findings).includes(value), false);
+  }
+  assert.ok(inspectFile(".env.example", `SMTP_PASSWORD=${spaced} # copied password`).length);
+});
+
+test("mail sender environment references and explicit placeholders remain safe without treating prose as a password", () => {
+  const names = ["SMTP_PASSWORD", "SMTP_PASS", "SMTP2GO_API_KEY", "RESEND_API_KEY", "BREVO_API_KEY"];
+  for (const name of names) {
+    for (const value of ["synthetic-test-credential", "EXAMPLE_MAIL_PASSWORD", "YOUR_MAIL_KEY", "<replace-me>", "${" + name + "}", "process.env." + name]) {
+      assert.deepEqual(inspectFile("settings.example.ts", `${name}="${value}"`), []);
+    }
+    assert.deepEqual(inspectFile("settings.example.ts", `const value = process.env.${name};`), []);
+    assert.deepEqual(inspectFile("settings.example.ts", `const value = import.meta.env.${name};`), []);
+  }
+  assert.deepEqual(inspectFile("docs/email.md", "SMTP_PASSWORD is entered directly in the provider dashboard."), []);
+  assert.deepEqual(inspectFile("docs/email.md", 'SMTP_PASSWORD="Enter the password from your sender"'), []);
+  assert.deepEqual(inspectFile("config.ts", 'SMTP_USERNAME="powerbuildsender"'), []);
+});
+
 test("private PEM material, including a truncated key, is detected but a public certificate/header example is allowed", () => {
   const header = "-----BEGIN " + "PRIVATE" + " KEY-----";
   const footer = "-----END " + "PRIVATE" + " KEY-----";

@@ -47,6 +47,19 @@ const jwt = role => [
 const opaque = () => randomBytes(32).toString("base64url");
 const named = (...parts) => parts.join("_");
 
+test("mail credentials cannot be referenced by client source or emitted browser assets", async t => {
+  const names = ["SMTP_PASSWORD", "SMTP_PASS", "SMTP2GO_API_KEY", "RESEND_API_KEY", "BREVO_API_KEY"];
+  for (const name of names) {
+    const folder = await fixture(t);
+    await write(folder, "app/page.tsx", `"use client"; export default function Page() { return process.env.NEXT_PUBLIC_${name}; }`);
+    assert.ok((await auditServerBoundaries(folder)).some(f => f.reason === "client-module-server-secret-access"));
+    assert.ok(browserSecretReasons(`process.env["${name}"]`).includes("server-secret-environment-name"));
+    await write(folder, "app/page.tsx", 'export default function Page() { return "Safe app"; }');
+    await write(folder, "lib/mail.ts", `import "server-only"; export const password = process.env.${name};`);
+    assert.deepEqual(await auditServerBoundaries(folder), []);
+  }
+});
+
 test("the real Vercel upload collector excludes private files, not merely ignore text", async t => {
   const folder = await fixture(t);
   const privateFiles = [

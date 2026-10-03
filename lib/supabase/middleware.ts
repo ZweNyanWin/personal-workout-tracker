@@ -5,7 +5,7 @@ import type { Database } from "@/types/database";
 export async function updateSession(request: NextRequest) {
   // These handlers verify their own credentials. Recovery pages check their
   // session themselves; a stale session must not block opening a new reset link.
-  if (["/api/qr-login/start", "/api/qr-login/poll", "/api/coach", "/auth/callback", "/update-password", "/forgot-password"].includes(request.nextUrl.pathname)) {
+  if (["/api/qr-login/start", "/api/qr-login/poll", "/api/coach", "/auth/callback", "/auth/confirm", "/accept-coach-invite", "/update-password", "/forgot-password"].includes(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
   let supabaseResponse = NextResponse.next({ request });
@@ -45,6 +45,8 @@ export async function updateSession(request: NextRequest) {
     "/forgot-password",
     "/update-password",
     "/auth/callback",
+    "/auth/confirm",
+    "/accept-coach-invite",
     "/scan-login",
     "/api/qr-login",
   ];

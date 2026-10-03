@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { saveCoachingDraft } from "@/lib/actions/coaching";
 import { buildClientContext } from "@/lib/coach/context";
 import { loadCoachExerciseCatalog } from "@/lib/coach/exercise-catalog";
+import { compatibleGenerationSource } from "@/lib/coach/program-source";
 import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
 import { coachingScopeSchema, workflowProgramDraftSchema, validateWorkflowProgramDraft, type CoachingDraftRecord } from "@/lib/coach/workflow-schema";
-import { coachJson, gatewayCall, mutationFromApp, readCoachInput } from "@/lib/coach/gateway-client";
+import { coachJson, gatewayCall, GatewayRequestError, mutationFromApp, readCoachInput } from "@/lib/coach/gateway-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -57,16 +58,23 @@ export async function POST(request: Request) {
     if (!saved.success) return coachJson({ error: saved.error || "Could not save this brief." }, 409);
     const draft = saved.data;
     persistedDraft = draft;
-    const [context, exerciseCatalog] = await Promise.all([
+    const [context, profile] = await Promise.all([
       buildClientContext(memberId, coach.supabase),
-      loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief),
+      coach.supabase.from("coaching_profiles").select("training_context").eq("member_id", memberId).maybeSingle(),
     ]);
+    if (profile.error) throw new Error("Client equipment and movement limitations could not be verified. Retry before drafting.");
+    const trainingContext = profile.data?.training_context ?? "";
+    const exerciseCatalog = await loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief, trainingContext);
+    const sourceWeeks = compatibleGenerationSource(previousContent, brief, trainingContext, exerciseCatalog.entries);
     const contextText = `${exerciseCatalog.context}\n${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
     coachId = coach.user.id;
+    // An authorized, saved draft belongs to the coach's workspace. Navigation
+    // must not cancel its dispatch before the database recovery pointer is set.
+    // gatewayCall still applies its own bounded transport deadline.
     const result = await gatewayCall("/v1/jobs", "POST", { userId: coachId,
       messages: [{ role: "user", content: "Create a complete program draft for the coach to review." }],
-      context: contextText, program: { brief, scope, exerciseCatalog: exerciseCatalog.entries, ...(previousContent ? { sourceWeeks: previousContent.weeks } : {}) },
-    }, request.signal);
+      context: contextText, program: { brief, scope, trainingContext, exerciseCatalog: exerciseCatalog.entries, ...(sourceWeeks ? { sourceWeeks } : {}) },
+    });
     acceptedJob = uuid.parse(result.jobId);
     const { data: attached, error: attachmentError } = await coach.supabase.rpc("set_coaching_generation", {
       p_draft_id: draft.id, p_expected_revision: draft.revision, p_job_id: acceptedJob,
@@ -98,10 +106,15 @@ async function getOrCancel(request: Request) {
     }
     if (draft.content && draft.generation_revision !== null && draft.revision > draft.generation_revision) return coachJson({ status: "completed", draft });
     // A complete 16-week draft may be larger than a chat answer.
-    const result = await gatewayCall(`/v1/jobs/${jobId.data}?userId=${coach.user.id}`, "GET", undefined, request.signal, 1024 * 1024);
     async function failedDraft(message: unknown) {
       const { data: cleared } = await coach!.supabase.rpc("set_coaching_generation", { p_draft_id: draft!.id, p_expected_revision: draft!.revision, p_job_id: null });
       return coachJson({ status: "failed", draft: cleared ?? draft, error: message });
+    }
+    let result;
+    try { result = await gatewayCall(`/v1/jobs/${jobId.data}?userId=${coach.user.id}`, "GET", undefined, request.signal, 1024 * 1024); }
+    catch (failure) {
+      if (failure instanceof GatewayRequestError && failure.status === 404) return failedDraft("This Mac job expired or the connector restarted. Your saved brief and previous draft are kept; you can try again.");
+      throw failure;
     }
     if (result.status === "failed" || result.status === "cancelled") return failedDraft(result.error || "Tommy could not complete the draft. Your previous draft is kept.");
     if (result.status !== "completed") return coachJson({ status: result.status, ...(result.progress ? { progress: result.progress } : {}) });

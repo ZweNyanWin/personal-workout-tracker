@@ -40,3 +40,24 @@ node connector/run.mjs --no-publish
 This starts and verifies the authenticated gateway and HTTPS tunnel but does not change Vercel. The private `runtime.json` next to `config.json` records the current tunnel URL and launcher PID without the token. It is intended for the initial setup process, which configures Vercel and deploys the new app integration separately. This mode alone does not enable phone AI.
 
 The coach remains experimental. Fine-tuned candidates have not passed their quality checks, so the gateway uses the original `workout-coach` preset. Starting the connector does not retrain the model. Stopping the Mac connector makes AI unavailable until you start it again.
+
+## Drafting while you use other pages
+
+After PowerBuild accepts a drafting job, Tommy continues on the Mac when you
+switch to another app page. The signed-in browser tab checks the job in the
+background and saves a completed draft. Returning to the client workspace also
+loads the saved job pointer and resumes checking, including after a refresh.
+Temporary connection failures keep the pointer for another check.
+
+The gateway retains completed program results in Mac memory for up to 24 hours
+(ordinary chat jobs keep their shorter 10-minute retention). Its job capacity is
+bounded. Restarting the connector clears this memory, so return and let the app
+save your completed draft before stopping it. Saved database drafts survive a
+restart. Unsaved editor changes stay in the current tab's private memory for
+30 minutes and clear on sign-out or an account change; they do not survive
+closing the tab or refreshing it.
+
+Your current equipment and stated exercise limitations take priority over gym
+favorites. Pasted prescriptions still need coach review: catalog compatibility
+and validation reduce specific errors without proving that a plan is suitable
+for the client.

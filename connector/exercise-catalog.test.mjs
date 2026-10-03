@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { exerciseCatalogContext, exerciseCatalogProblems, validateExerciseCatalog } from "./exercise-catalog.mjs";
+import { extractTrainingConstraints } from "../lib/coach/training-constraints.mjs";
 
 const entry = (number, name, overrides = {}) => ({
   id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
@@ -43,4 +44,20 @@ test("same lift can use labeled top/backdown groups while unlisted variants and 
     assert.equal(exerciseCatalogProblems(week(name), catalog).length, 1, name);
   }
   assert.deepEqual(exerciseCatalogProblems(week("Any legacy name"), []), []);
+});
+
+test("catalog identities do not authorize unavailable equipment, ability conflicts or incompatible load text", () => {
+  const constraints = extractTrainingConstraints("Home workout. Equipment: two 5kg dumbbells and a band\nI cannot do dips.");
+  const catalog = [entry(1, "Cable Fly / Pec Deck", { equipment: "cable" }), entry(2, "Dips", { equipment: "bodyweight" }),
+    entry(3, "Dumbbell Row", { equipment: "dumbbell" })];
+  const bad = { days: [{ number: 1, exercises: [
+    { name: "Cable Fly / Pec Deck", loadOrAssistance: "5kg dumbbell" },
+    { name: "Dips", loadOrAssistance: "Bodyweight" },
+    { name: "Dumbbell Row", loadOrAssistance: "115 kg barbell" },
+  ] }] };
+  const issues = exerciseCatalogProblems(bad, catalog, constraints);
+  assert.ok(issues.some((issue) => /Cable Fly.*unavailable/.test(issue)));
+  assert.ok(issues.some((issue) => /Dips.*ability/.test(issue)));
+  assert.ok(issues.some((issue) => /Dumbbell Row.*supplied 5 kg/.test(issue)));
+  assert.deepEqual(exerciseCatalogProblems({ days: [{ number: 1, exercises: [{ name: "Dumbbell Row", loadOrAssistance: "5kg dumbbell" }] }] }, catalog, constraints), []);
 });
