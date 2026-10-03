@@ -29,6 +29,46 @@ test("effort guard catches observed contradictions without confusing independent
   assert.ok(programEffortProblems({ warmup: "Easy warmup at RPE 3", exercises: [{ effort: "RPE 8 (3 RIR)" }] }).length);
 });
 
+test("actual punctuation-only candidate effort and malformed labels fail while qualitative targets remain valid", () => {
+  for (const target of [":{", "???", "7", "RPE apples", "RPE 8.5oops", "RPE 8–", "RPE 8; RPE unknown", "RIR ???", "two RIR", "RPE 8 (RIR unknown)"]) {
+    assert.ok(effortProblems(target).length, target);
+    assert.ok(programEffortProblems({ weeks: [{ days: [{ exercises: [{ name: "Wall Push-up", effort: target }] }] }] }).length, target);
+  }
+  for (const target of ["Easy, comfortable effort", "Light recovery", "Stop before position loss", "Controlled technique", "RPE: 8", "RPE=8 (2 RIR)", "RIR: 3", "2RIR", "RPE 8."]) {
+    assert.deepEqual(effortProblems(target), [], target);
+  }
+  assert.match(effortProblems("RPE 8; RPE 11").join(" "), /between 5 and 10/);
+});
+
+test("negative written reserves cannot become positive targets while zero and descending reserves remain valid", () => {
+  for (const target of ["-1 RIR", "−1 RIR", "–1RIR", "-2–1 RIR", "RIR -1", "RPE 9 (-1 RIR)"]) {
+    assert.ok(effortProblems(target).length, target);
+  }
+  for (const target of ["0 RIR", "RIR 0", "RPE 10 (0 RIR)", "RPE 5–6 (5–4 RIR)"]) {
+    assert.deepEqual(effortProblems(target), [], target);
+  }
+});
+
+test("persistent junk accessory effort fails the focused generator after bounded repair and never returns a partial draft", async () => {
+  for (const effort of [":{", "RPE apples"]) {
+    let calls = 0;
+    await assert.rejects(generateProgram({ program: { brief: "Create one week, 3 days per week of wall push-ups", scope: { startWeek: 1, weekCount: 1, daysPerWeek: 3 } },
+      system: "rules", signal: new AbortController().signal, chat: async (body) => {
+        calls++;
+        if (body.format.properties.week) {
+          const outline = week(1, 3);
+          for (const day of outline.week.days) day.exercises = [{ name: "Wall Push-up" }];
+          return response(outline);
+        }
+        return response({ day: { number: body.format.properties.day.properties.number.const, title: "Wall push-up practice", warmup: "Separate gradual practice", exercises: {
+          group1: { name: "Wall Push-up", sets: 2, dose: { kind: "reps", range: { min: 6, max: 6 }, perSide: false },
+            loadOrAssistance: "Bodyweight", effort, restSeconds: 90, restIsExplicit: false, notes: "" },
+        } } });
+      } }), /after three attempts for day 1.*effort target/i);
+    assert.equal(calls, 4, "One outline plus three failed first-day attempts; later days do not start");
+  }
+});
+
 test("generates all requested weeks separately and preserves distinct doses, variants and holds", async () => {
   const calls = [], progress = [];
   const draft = await generateProgram({ program: request, context: "Actual completed sets: none", system: "System rules", signal: new AbortController().signal,

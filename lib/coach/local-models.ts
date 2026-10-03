@@ -46,11 +46,14 @@ export function localInspectionAllowed(environment: string | undefined, requestU
   try {
     const url = new URL(requestUrl);
     const suppliedHost = new URL(`${url.protocol}//${host}`);
+    // Next dev may normalize the URL to its bind hostname. Both authorities must
+    // remain loopback on the same port; POST still checks the raw Host's origin.
     return ["http:", "https:"].includes(url.protocol) && LOOPBACK.has(url.hostname) && !url.username && !url.password
-      && url.host === suppliedHost.host && suppliedHost.hostname === url.hostname;
+      && LOOPBACK.has(suppliedHost.hostname) && url.port === suppliedHost.port;
   } catch { return false; }
 }
 
 export function localInspectionOriginAllowed(environment: string | undefined, requestUrl: string, host: string | null, origin: string | null): boolean {
-  return localInspectionAllowed(environment, requestUrl, host) && origin === new URL(requestUrl).origin;
+  return localInspectionAllowed(environment, requestUrl, host)
+    && origin === new URL(`${new URL(requestUrl).protocol}//${host}`).origin;
 }
