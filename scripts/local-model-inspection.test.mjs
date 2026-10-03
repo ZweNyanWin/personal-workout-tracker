@@ -36,7 +36,7 @@ test("malformed or oversized inventory remains bounded and returns only safe met
   assert.equal(selectInstalledCoachModel("workout-coach-v602", { models: Array.from({ length: 600 }, (_, index) => ({ name: `workout-coach-v${index + 3}:latest` })) }), null);
 });
 
-test("local inspector fails closed outside loopback development, including mismatched Host and URL", () => {
+test("local inspector fails closed outside loopback development, including nonlocal authorities and mismatched ports", () => {
   for (const origin of ["http://localhost:3001", "http://127.0.0.1:3001", "http://[::1]:3001"]) {
     assert.equal(localInspectionAllowed("development", `${origin}/api/local-ollama`, new URL(origin).host), true);
     assert.equal(localInspectionAllowed("production", `${origin}/api/local-ollama`, new URL(origin).host), false);
@@ -45,7 +45,6 @@ test("local inspector fails closed outside loopback development, including misma
   for (const [url, host] of [
     ["https://powerbuild.example/api/local-ollama", "localhost:3001"],
     ["http://localhost:3001/api/local-ollama", "powerbuild.example"],
-    ["http://localhost:3001/api/local-ollama", "127.0.0.1:3001"],
     ["http://localhost:3001/api/local-ollama", "localhost:3002"],
     ["http://localhost:3001/api/local-ollama", "localhost.evil:3001"],
     ["http://localhost:3001/api/local-ollama", "localhost:65536"],
@@ -53,6 +52,19 @@ test("local inspector fails closed outside loopback development, including misma
     ["ftp://localhost/api/local-ollama", "localhost"],
     ["http://user:pass@localhost:3001/api/local-ollama", "localhost:3001"],
   ]) assert.equal(localInspectionAllowed("development", url, host), false);
+});
+
+test("Next dev bind-host normalization accepts only loopback aliases on the same port", () => {
+  const url = "http://localhost:3001/api/local-ollama";
+  for (const host of ["127.0.0.1:3001", "[::1]:3001"]) {
+    assert.equal(localInspectionAllowed("development", url, host), true);
+    assert.equal(localInspectionOriginAllowed("development", url, host, `http://${host}`), true);
+    assert.equal(localInspectionOriginAllowed("development", url, host, "http://localhost:3001"), false);
+    assert.equal(localInspectionOriginAllowed("production", url, host, `http://${host}`), false);
+  }
+  assert.equal(localInspectionAllowed("development", "http://127.0.0.1:3001/api/local-ollama", "localhost:3001"), true);
+  assert.equal(localInspectionAllowed("development", url, "127.0.0.1:3002"), false);
+  assert.equal(localInspectionAllowed("development", "http://evil.test:3001/api/local-ollama", "127.0.0.1:3001"), false);
 });
 
 test("inference requires the exact local origin; cross-site, missing, null and other local ports fail", () => {
