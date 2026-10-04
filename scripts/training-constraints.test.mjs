@@ -103,3 +103,54 @@ test("the latest whole-program inventory correction replaces a pasted list, and 
   const localRow = extractTrainingConstraints(`${homeBrief}\n| Push-ups | Bodyweight only |`);
   assert.deepEqual(localRow.availableEquipment, ["dumbbell", "bands", "parallettes"]);
 });
+
+test("a closed floor and wall inventory never admits a comma-separated forbidden equipment list", () => {
+  const constraints = extractTrainingConstraints("Home workout. I only have the floor and a stable wall: no dumbbells, bands, barbell, cables, machines, rings or pull-up bar.");
+  assert.equal(constraints.equipmentRestricted, true);
+  assert.deepEqual(constraints.availableEquipment, []);
+  assert.equal(constraints.dumbbellLoad, null);
+  const choices = [exercise("Wall Push-up", "bodyweight"), exercise("Dead Bug", "bodyweight"), exercise("Barbell Row", "barbell"),
+    exercise("Leg Press", "machine"), exercise("Band Row", "bands"), exercise("Cable Fly", "cable")];
+  assert.deepEqual(filterTrainingCatalog(choices, constraints).map(value => value.name), ["Wall Push-up", "Dead Bug"]);
+  assert.deepEqual(extractTrainingConstraints("Equipment: floor and a stable wall").availableEquipment, []);
+  assert.equal(extractTrainingConstraints("Equipment: floor and a stable wall").equipmentRestricted, true);
+});
+
+test("affirmative equipment remains available before a negated comma and conjunction list", () => {
+  for (const list of ["no barbell, bands, cables or machines", "without barbell, rings and pull-up bar", "do not have barbell, bands or machines"]) {
+    const constraints = extractTrainingConstraints(`Equipment: two 6kg dumbbells, ${list}`);
+    assert.deepEqual(constraints.availableEquipment, ["dumbbell"], list);
+    assert.deepEqual(constraints.dumbbellLoad, { value: 6, unit: "kg", count: 2 });
+  }
+  const none = extractTrainingConstraints("Equipment: no 2.5kg dumbbells, bands or rings");
+  assert.deepEqual(none.availableEquipment, []);
+  assert.equal(none.dumbbellLoad, null);
+});
+
+test("an explicit affirmative correction ends an equipment-list negation", () => {
+  for (const separator of [", but I own ", ", I have ", "; I use "]) {
+    const constraints = extractTrainingConstraints(`Equipment: no barbell, cables or machines${separator}two 6kg dumbbells and a resistance band`);
+    assert.deepEqual(constraints.availableEquipment, ["dumbbell", "bands"], separator);
+    assert.deepEqual(constraints.dumbbellLoad, { value: 6, unit: "kg", count: 2 });
+  }
+});
+
+test("qualified floor-push-up inability keeps a prescribed wall regression eligible and dips excluded", () => {
+  const constraints = extractTrainingConstraints("Home workout. Equipment: floor and wall\nI cannot perform dips or standard floor push-ups. My coach prescribes Wall Incline Push-up practice.");
+  assert.ok(!constraints.excludedExercises.includes("push ups"));
+  const candidates = [exercise("Wall Incline Push-up", "bodyweight"), exercise("Standard Floor Push-up", "bodyweight"),
+    exercise("Push-ups", "bodyweight"), exercise("Dips", "bodyweight")];
+  assert.deepEqual(filterTrainingCatalog(candidates, constraints).map(value => value.name), ["Wall Incline Push-up"]);
+  for (const name of ["Standard Floor Push-up", "Regular Push-up", "Full Push-up", "Push-ups", "Dips"]) {
+    assert.match(trainingExerciseProblems(exercise(name, "bodyweight"), constraints).join(" "), /ability|excluded/, name);
+  }
+});
+
+test("an unqualified or explicitly wall-specific push-up ban is not loosened", () => {
+  for (const brief of ["I cannot do push-ups.", "Do not prescribe push-ups.", "No push-up variations.", "I cannot do wall push-ups."]) {
+    const constraints = extractTrainingConstraints(brief);
+    assert.ok(trainingExerciseProblems(exercise("Wall Push-up", "bodyweight"), constraints).length, brief);
+  }
+  const both = extractTrainingConstraints("I cannot do standard floor push-ups or wall push-ups.");
+  assert.ok(trainingExerciseProblems(exercise("Wall Push-up", "bodyweight"), both).length);
+});
