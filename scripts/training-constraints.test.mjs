@@ -135,6 +135,29 @@ test("an explicit affirmative correction ends an equipment-list negation", () =>
   }
 });
 
+test("fresh equipment replaces saved unavailable implements without erasing named movement bans", () => {
+  const saved = "Equipment: no barbell, cables or machines.\nI cannot do dips. Avoid Cable Row.";
+  const constraints = extractTrainingConstraints("Home workout. Equipment: barbell, cable machine\nCoach prescribes Barbell Row.", saved);
+  assert.deepEqual(constraints.availableEquipment, ["barbell", "cable", "machine"]);
+  assert.ok(!constraints.excludedExercises.some(item => ["barbell", "cables", "machines"].includes(item)));
+  const choices = [exercise("Barbell Row", "barbell"), exercise("Cable Fly", "cable"),
+    exercise("Cable Row", "cable"), exercise("Dips", "bodyweight")];
+  assert.deepEqual(filterTrainingCatalog(choices, constraints).map(item => item.name), ["Barbell Row", "Cable Fly"]);
+  const availableBar = extractTrainingConstraints("Equipment: pull-up bar", "Equipment: no pull-up bar.");
+  assert.deepEqual(filterTrainingCatalog([exercise("Pull-Up", "bodyweight")], availableBar).map(item => item.name), ["Pull-Up"]);
+  const cannotPullUp = extractTrainingConstraints("Equipment: pull-up bar", "Equipment: no pull-up bar.\nI cannot perform pull-ups.");
+  assert.match(trainingExerciseProblems(exercise("Pull-Up", "bodyweight"), cannotPullUp).join(" "), /ability|excluded/);
+  for (const brief of ["Do not prescribe Barbell Row.", "No Cable Chest Fly or Leg Press.", "Exclude Pec Deck."]) {
+    const names = brief.includes("Barbell") ? ["Barbell Row"] : brief.includes("Cable") ? ["Cable Chest Fly", "Leg Press"] : ["Pec Deck"];
+    const bans = extractTrainingConstraints("Equipment: barbell, cable machine\n" + brief);
+    for (const name of names) assert.match(trainingExerciseProblems(exercise(name, "bodyweight"), bans).join(" "), /ability|excluded/, name);
+  }
+  for (const brief of ["I cannot bench.", "Do not prescribe bench."]) {
+    const bans = extractTrainingConstraints(brief);
+    assert.match(trainingExerciseProblems(exercise("Bench Press", "barbell"), bans).join(" "), /ability|excluded/, brief);
+  }
+});
+
 test("qualified floor-push-up inability keeps a prescribed wall regression eligible and dips excluded", () => {
   const constraints = extractTrainingConstraints("Home workout. Equipment: floor and wall\nI cannot perform dips or standard floor push-ups. My coach prescribes Wall Incline Push-up practice.");
   assert.ok(!constraints.excludedExercises.includes("push ups"));
