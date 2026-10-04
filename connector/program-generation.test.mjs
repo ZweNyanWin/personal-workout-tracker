@@ -465,6 +465,41 @@ No competition-style lifts. I cannot do dips.
   }
 });
 
+test("home generation keeps a coach-selected wall regression and repairs an unavailable gym favorite", async () => {
+  const entry = (number, name, equipment) => ({ id: `61000000-0000-4000-8000-${String(number).padStart(12, "0")}`, name, equipment });
+  const catalog = [entry(1, "Wall Push-up", "bodyweight"), entry(2, "Dead Bug", "bodyweight"), entry(3, "Dips", "bodyweight"),
+    entry(4, "Barbell Row", "barbell"), entry(5, "Cable Chest Fly", "cable"), entry(6, "Leg Press", "machine")];
+  const value = week(7, 3);
+  for (const day of value.week.days) {
+    const wall = day.number !== 2;
+    day.exercises = [{ name: wall ? "Wall Push-up" : "Dead Bug", sets: 2,
+      dose: { kind: "reps", range: { min: wall ? 4 : 6, max: wall ? 4 : 6 }, perSide: !wall },
+      loadOrAssistance: "Bodyweight", effort: "RPE 6.5", restSeconds: 108, restIsExplicit: true, notes: "Coach review before any harder variation." }];
+  }
+  let outlines = 0, calls = 0;
+  const draft = await generateProgram({ program: {
+    brief: `Only week 7, three days of home practice. I only have the floor and a stable wall: no barbell, cables, machines, bands or dumbbells.
+I cannot perform dips or regular floor push-ups. Coach-selected current practice: Wall Push-up on days 1 and 3, 2 x 4 at RPE 6.5; Dead Bug on day 2, 2 x 6 per side at RPE 6.5. Rest exactly 1.8 minutes for every group.`,
+    scope: { startWeek: 7, weekCount: 1, daysPerWeek: 3 }, exerciseCatalog: catalog,
+  }, system: "rules", signal: new AbortController().signal, chat: async (body) => {
+    calls++;
+    if (body.format.properties.week) {
+      assert.deepEqual(body.format.properties.week.properties.days.items.properties.exercises.items.properties.name.enum, ["Wall Push-up", "Dead Bug"]);
+      const outline = structuredClone(value);
+      for (const day of outline.week.days) day.exercises = day.exercises.map(({ name }) => ({ name }));
+      if (++outlines === 1) outline.week.days[0].exercises[0].name = "Cable Chest Fly";
+      else assert.match(body.messages[1].content, /REPAIR:.*(?:unavailable|library)/);
+      return response(outline);
+    }
+    const day = value.week.days.find(day => day.number === body.format.properties.day.properties.number.const);
+    return response({ day: wireDay(day) });
+  } });
+  assert.equal(outlines, 2);
+  assert.equal(calls, 5, "Rejected gym outline is repaired before the three days are generated");
+  assert.deepEqual(draft.weeks[0].days.map(day => day.exercises[0].name), ["Wall Push-up", "Dead Bug", "Wall Push-up"]);
+  assert.ok(draft.weeks[0].days.every(day => day.exercises[0].restSeconds === 108));
+});
+
 test("repeated invented home loads fail rather than silently becoming the available dumbbell weight", async () => {
   const value = week(1, 1);
   value.week.days[0].exercises = [{ name: "Dumbbell Goblet Squat", sets: 2, dose: { kind: "reps", range: { min: 10, max: 10 }, perSide: false },
