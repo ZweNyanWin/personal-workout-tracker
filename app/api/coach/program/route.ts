@@ -66,7 +66,9 @@ export async function POST(request: Request) {
     const trainingContext = profile.data?.training_context ?? "";
     const exerciseCatalog = await loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief, trainingContext);
     const sourceWeeks = compatibleGenerationSource(previousContent, brief, trainingContext, exerciseCatalog.entries);
-    const contextText = `${exerciseCatalog.context}\n${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
+    // The structured catalog is sent separately. Duplicating it here consumed
+    // the model budget and could cut off actual client rules or completed logs.
+    const contextText = `${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
     coachId = coach.user.id;
     // An authorized, saved draft belongs to the coach's workspace. Navigation
     // must not cancel its dispatch before the database recovery pointer is set.
