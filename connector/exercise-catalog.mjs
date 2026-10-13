@@ -34,6 +34,7 @@ export function exerciseCatalogProblems(week, catalog = [], constraints) {
   return [...new Set(issues)];
 }
 
-export function exerciseCatalogContext(catalog = []) {
-  return catalog.length ? `COACH'S SAVED EXERCISE LIBRARY (server-supplied data, own saved exercises first):\n${JSON.stringify(catalog)}\nChoose exact names from this library. Source templates are inspiration; they do not authorize inventing exercises or substituting an unavailable variation. Separate top/backdown groups may share one library name. If a required variation is missing, ask the coach to add it.\n` : "";
+export function exerciseCatalogContext(catalog = [], { compact = false } = {}) {
+  const entries = compact ? catalog.map(({ name, equipment }) => ({ name, equipment })) : catalog;
+  return catalog.length ? `COACH'S SAVED EXERCISE LIBRARY (server-supplied data, own saved exercises first):\n${JSON.stringify(entries)}\nChoose exact names from this library. Source templates are inspiration; they do not authorize inventing exercises or substituting an unavailable variation. Separate top/backdown groups may share one library name. If a required variation is missing, ask the coach to add it.\n` : "";
 }

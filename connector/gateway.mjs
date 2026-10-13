@@ -7,6 +7,7 @@ import { generateProgram } from "./program-generation.mjs";
 import { buildReferenceContext, loadReferenceLibrary } from "./references.mjs";
 import { validateExerciseCatalog } from "./exercise-catalog.mjs";
 import { safetyAnswer, calculationAnswer, completeAnswer } from "./answer-guards.mjs";
+import { programGenerationTimeout } from "./program-prompt.mjs";
 
 const HOST = "127.0.0.1";
 const OLLAMA = "http://127.0.0.1:11434";
@@ -235,11 +236,12 @@ export function createGateway({
     const timer = setTimeout(() => {
       if (job.status === "running") {
         job.status = "failed";
-        job.error = "The Mac coach timed out. Try a shorter question.";
+        job.error = program ? "Tommy reached this block's bounded Mac drafting deadline. Your saved brief and previous draft are kept; try a smaller block."
+          : "The Mac coach timed out. Try a shorter question.";
         job.finishedAt = now();
         job.controller.abort();
       }
-    }, program ? Math.max(generationTimeoutMs, 30 * 60 * 1000) : generationTimeoutMs);
+    }, program ? Math.max(generationTimeoutMs, programGenerationTimeout(program.scope)) : generationTimeoutMs);
     try {
       const chat = async ({ messages: prompt, format, signal }) => readJsonLimited(await fetchImpl(`${OLLAMA}/api/chat`, {
         method: "POST", redirect: "error", headers: { "Content-Type": "application/json" }, signal,
