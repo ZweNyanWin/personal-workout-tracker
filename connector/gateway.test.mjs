@@ -318,16 +318,17 @@ test("completed programs remain recoverable through a suspended browser for 24 h
   assert.equal((await poll(started.body.jobId)).status, 404);
 });
 
-test("clamps generated text, visibly marks token truncation, and rejects incomplete/oversized upstream responses", async (t) => {
+test("truncated, overlong and incomplete replies fail without an answer eligible for persistence", async (t) => {
   let answer = result("x".repeat(21000));
   const { start, poll } = await setup(t, { fetchImpl: async () => answer });
   let response = await start();
   let completed = await terminal(poll, response.body.jobId);
-  assert.equal(completed.body.answer.length, 20000);
-  assert.match(completed.body.answer, /may be incomplete/);
+  assert.equal(completed.body.status, "failed");
+  assert.equal(completed.body.answer, undefined);
   answer = result("partial answer", { done_reason: "length" });
   response = await start(); completed = await terminal(poll, response.body.jobId);
-  assert.match(completed.body.answer, /may be incomplete/);
+  assert.equal(completed.body.status, "failed");
+  assert.equal(completed.body.answer, undefined);
   answer = result("unvalidated", { done: false });
   response = await start(); completed = await terminal(poll, response.body.jobId);
   assert.equal(completed.body.status, "failed");
@@ -336,6 +337,22 @@ test("clamps generated text, visibly marks token truncation, and rejects incompl
   response = await start(); completed = await terminal(poll, response.body.jobId);
   assert.equal(completed.body.status, "failed");
   assert.equal(completed.body.answer, undefined);
+});
+test("urgent first aid bypasses model inference and retains authenticated job ownership", async (t) => {
+  let calls=0;
+  const {start,poll}=await setup(t,{fetchImpl:async()=>{calls++;return result("unsafe wait tomorrow");}});
+  const started=await start({userId:USER,messages:[{role:"user",content:"My tongue is swollen and I am struggling to breathe after eating. Can I wait?"}]});
+  const completed=await terminal(poll,started.body.jobId);
+  assert.equal(completed.body.status,"completed");assert.match(completed.body.answer,/emergency services now/);assert.equal(calls,0);
+  assert.equal((await poll(started.body.jobId,OTHER_USER)).status,404);
+});
+
+test("drafting cannot turn current urgent symptoms into a structured workout", async (t) => {
+  let calls=0;
+  const {start,poll}=await setup(t,{generateProgramImpl:async()=>{calls++;throw Error("unexpected");}});
+  const started=await start({userId:USER,messages:[{role:"user",content:"Draft a program"}],program:{scope:{startWeek:1,weekCount:1,daysPerWeek:1},brief:"I am fainting with chest pain. Give me heavy squats anyway."}});
+  const completed=await terminal(poll,started.body.jobId);
+  assert.equal(completed.body.status,"failed");assert.equal(completed.body.answer,undefined);assert.equal(calls,0);assert.match(completed.body.error,/emergency/);
 });
 
 test("shutdown cancels generation and closes the loopback listener", async (t) => {

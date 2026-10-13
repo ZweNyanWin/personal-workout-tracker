@@ -10,7 +10,7 @@ const forward = new RegExp(`\\brest(?:\\s+time)?(?:\\s+(?:between\\s+(?:working\
 const reverse = new RegExp(`\\b${number}\\s*${unit}\\s+(?:of\\s+)?rest\\b`, "giu");
 const groups = [
   ["top single", /\btop\s+single\b/i, /\btop\s+single\b/i],
-  ["top", /\btop\s+set\b/i, /\btop\s+(?:sets?|single)\b/i],
+  ["top", /\btop\s+(?:set|working\s+group)\b/i, /\btop\s+(?:sets?|single|working\s+group)\b/i],
   ["backdown", /\b(?:backdowns?|back[- ]?off(?:\s+sets?)?)\b/i, /\b(?:backdowns?|back[- ]?off(?:\s+sets?)?)\b/i],
   ["technique", /\btechnique\b/i, /\btechnique\b/i],
   ["primary", /\bprimary\b/i, /\bprimary\b/i],
@@ -62,11 +62,47 @@ function selector(text, week) {
   };
 }
 
+function localSelector(text, week, scope) {
+  // A rest value belongs to its closest preceding prescription, including the
+  // comma-separated load/RPE fields. A later day/lift never qualifies it.
+  const bases = [...new Set((week.days ?? []).flatMap(day => (day.exercises ?? [])
+    .map(item => String(item.name ?? "").replace(groupSuffix, "").trim())))];
+  const hits = bases.flatMap(name => {
+    const words = normalize(name).split(" ").filter(Boolean);
+    if (!words.length) return [];
+    const expression = new RegExp(`\\b${words.join("[\\s—–-]+")}\\b`, "gi");
+    return [...text.matchAll(expression)].map(hit => ({ start: hit.index, end: hit.index + hit[0].length }));
+  }).sort((a,b) => b.end - a.end || a.start - b.start);
+  const local = hits.length ? text.slice(hits[0].start) : text.split(",").at(-1) ?? text;
+  const target = selector(local, week);
+  target.dayNumber = Number([...text.matchAll(/\bday\s*#?\s*(\d+)\b/gi)].at(-1)?.[1]) || scope?.dayNumber;
+  target.weekNumber = Number([...text.matchAll(/\bweek\s*#?\s*(\d+)\b/gi)].at(-1)?.[1]) || scope?.weekNumber;
+  // Repeated exact identities need their own numerical group association even
+  // when the model omits a role suffix. These are selectors, never new doses.
+  const dose = /\b(\d+)\s*[×x]\s*(\d+)(?:\s*[-–]\s*(\d+))?/i.exec(local);
+  const mass = /\b(\d+(?:\.\d+)?)\s*(kg|kgs|kilograms?|lb|lbs|pounds?)\b/i.exec(local);
+  if (hits.length && dose) target.dose = { sets: Number(dose[1]), min: Number(dose[2]), max: Number(dose[3] ?? dose[2]) };
+  if (hits.length && mass) target.mass = { value: Number(mass[1]), unit: /^k/i.test(mass[2]) ? "kg" : "lb" };
+  // The written numbers disambiguate a top/backoff group more reliably than an
+  // optional role label in model notes. A role-only instruction still uses it.
+  if (target.dose || target.mass) target.groups = [];
+  target.qualified ||= target.dayNumber !== undefined || target.weekNumber !== undefined;
+  return target;
+}
+
 function targetMatches(target, day, exercise, week) {
   if ((target.dayNumber !== undefined && target.dayNumber !== day.number) || (target.weekNumber !== undefined && target.weekNumber !== week.number)) return false;
   const name = normalize(String(exercise.name ?? "").replace(groupSuffix, ""));
   if (target.names.length && !target.names.includes(name)) return false;
   if (target.families.length && !target.families.some((family) => new RegExp(`\\b${family}\\b`, "i").test(name))) return false;
+  if (target.dose) {
+    const range = exercise.dose?.kind === "reps" ? exercise.dose.range : exercise.dose?.seconds;
+    if (exercise.sets !== target.dose.sets || range?.min !== target.dose.min || range?.max !== target.dose.max) return false;
+  }
+  if (target.mass) {
+    const mass = /\b(\d+(?:\.\d+)?)\s*(kg|kgs|kilograms?|lb|lbs|pounds?)\b/i.exec(exercise.loadOrAssistance ?? "");
+    if (!mass || Number(mass[1]) !== target.mass.value || (/^k/i.test(mass[2]) ? "kg" : "lb") !== target.mass.unit) return false;
+  }
   const groupText = `${exercise.name ?? ""} ${exercise.notes ?? ""}`;
   if (target.groups.length && !target.groups.every((label) => groups.find(([group]) => group === label)[2].test(groupText))) return false;
   return true;
@@ -74,15 +110,21 @@ function targetMatches(target, day, exercise, week) {
 
 function specificity(target) {
   return (target.names.length ? 8 : target.families.length ? 4 : 0) + target.groups.length * 2
-    + Number(target.dayNumber !== undefined) + Number(target.weekNumber !== undefined);
+    + Number(target.dayNumber !== undefined) + Number(target.weekNumber !== undefined) + Number(!!target.dose) + Number(!!target.mass);
 }
 
 function prescriptions(brief, week) {
   const result = [];
   let heading;
+  let scope;
   for (const segment of segments(brief)) {
     if (!segment) { heading = undefined; continue; }
+    const explicitScope = selector(segment, week);
     const matches = [...segment.matchAll(forward), ...segment.matchAll(reverse)].sort((a, b) => a.index - b.index);
+    if (!matches.length && (explicitScope.weekNumber !== undefined || explicitScope.dayNumber !== undefined)) {
+      scope = { weekNumber: explicitScope.weekNumber ?? scope?.weekNumber,
+        dayNumber: explicitScope.dayNumber ?? (explicitScope.weekNumber !== undefined ? undefined : scope?.dayNumber) };
+    }
     if (!matches.length) {
       // A standalone exercise/day heading can qualify its following Rest line.
       const candidate = selector(segment, week);
@@ -96,16 +138,19 @@ function prescriptions(brief, week) {
     for (let index = 0; index < matches.length; index++) {
       const match = matches[index];
       const start = index ? matches[index - 1].index + matches[index - 1][0].length : 0;
-      const prefix = segment.slice(start, match.index).split(",").map((piece) => piece.trim()).filter(Boolean).at(-1) ?? "";
+      const prefix = segment.slice(start, match.index).trim();
       // Post-duration targets need an explicit relation; later unrelated
       // exercise names in the sentence must not attach to this rest value.
       const tail = segment.slice(match.index + match[0].length, index + 1 < matches.length ? matches[index + 1].index : segment.length);
       const suffix = /^\s*(?:for|on|after)\b/i.test(tail) ? tail.split(",")[0] : "";
       if (/\b(?:do\s+not|don['’]?t|never)\s+(?:change|replace|set|use|add|prescribe)\b/i.test(`${prefix} ${suffix}`)
         || /\b(?:not|no)\s*$/i.test(prefix)) continue;
-      const before = selector(prefix, week), after = selector(suffix, week);
+      const before = localSelector(prefix, week, scope), after = selector(suffix, week);
+      if (before.dayNumber !== undefined || before.weekNumber !== undefined) scope = { dayNumber: before.dayNumber, weekNumber: before.weekNumber };
       let target = before.qualified ? before : after.qualified ? after : heading;
-      if (before.qualified && after.qualified && JSON.stringify(before) !== JSON.stringify(after)) {
+      if (before.qualified && after.qualified && (["names", "families", "groups"].some(key => before[key].length && after[key].length && JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+        || (before.names.length && after.families.length && !before.names.some(name => after.families.some(family => hasPhrase(name, family))))
+        || (after.names.length && before.families.length && !after.names.some(name => before.families.some(family => hasPhrase(name, family)))))) {
         throw new Error("An explicit rest clause has conflicting exercise/group targets; clarify it before generating.");
       }
       // Unsupported explicit post-duration exercise names are not global rest.

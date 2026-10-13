@@ -7,6 +7,7 @@ import { resolveBriefRestPrescriptions, applyExplicitRestPrescription } from "./
 import { resolveRequestedScope } from "../lib/coach/requested-scope.mjs";
 import { extractTrainingConstraints, filterTrainingCatalog, trainingConstraintContext, trainingNarrativeProblems } from "../lib/coach/training-constraints.mjs";
 import { extractMarkdownPrescription, markdownPrescriptionContext, markdownPrescriptionProblems, markdownScopeProblems, sourcePrescriptionForDay, groundedMarkdownHeader, markdownHeaderProblems, markdownNotes, markdownWarmup } from "./markdown-prescription.mjs";
+import { extractWrittenPrescription, groundDraftNarrative, writtenPrescriptionProblems } from "./written-prescription.mjs";
 // Fixed schema and limits: the browser cannot choose a provider, model, or format.
 const text = { type: "string", minLength: 1, maxLength: 400 };
 const loadAndSideGuidance = "Apply the external working-load rule ONLY to barbell main lifts (squat, bench press, deadlift and overhead press): if their working weight is unknown, say 'Choose an external load for the prescribed RPE'; never use bodyweight or an exercise-role label for these barbell groups. For other movements use their actual loading: bodyweight for ordinary push-ups and planks unless the coach supplies added load or assistance, and exact written loads and equipment such as a 5 kg goblet squat. Do not replace bodyweight or a supplied kg load with a generic external-load instruction. A movement named Band, Dumbbell, Kettlebell, Cable, Barbell, Smith or Weighted must describe that equipment or added load in loadOrAssistance; plain bodyweight or 'bodyweight load' contradicts the named movement. Equipment written only in notes does not fix a contradictory loadOrAssistance field. For a Dumbbell Farmer's Carry, put the coach's actual dumbbell weight in loadOrAssistance; when not supplied, use 'Dumbbells; working weight not supplied', never invent a weight. Unknown band resistance can be 'Resistance band; tension not supplied', without inventing its strength. Repetition dose.perSide is false for bilateral movements, ordinary push-ups and goblet squats; it is true only for an actual unilateral movement or an explicit per-side coach prescription. Easy recovery activities may use qualitative effort such as 'Easy, comfortable effort'; do not force working-set RPE or RIR onto easy walking or mobility. Main barbell lifts still require their scalar RPE.";
@@ -114,6 +115,20 @@ export async function generateProgram({ program, context = "", system, chat, sig
   if (pastedIssues.length) throw new Error(`Tommy needs clarification before preserving this pasted program. ${pastedIssues.join(" ")} Your saved draft and current program are kept.`);
   if (markdownPrescription) markdownPrescription.header = groundedMarkdownHeader(markdownPrescription, program.scope);
   program = { ...program, exerciseCatalog: catalog, trainingConstraints, markdownPrescription };
+  const written = !program.sourceWeeks?.length && !markdownPrescription
+    ? extractWrittenPrescription(program.brief, program.scope, catalog) : null;
+  if (written?.complete) {
+    signal.throwIfAborted();
+    const value = groundDraftNarrative({ title: `Week ${program.scope.startWeek} · coach prescription`, assumptions: [], progression: "", regression: "",
+      week: { number: program.scope.startWeek, focus: "Preserve the written coach prescriptions for review.", days: written.days } }, program);
+    checkWeek(value, program.scope.startWeek, program.scope.daysPerWeek);
+    const issues = [...briefConstraintProblems(value.week, extractBriefConstraints(program.brief)), ...exerciseCatalogProblems(value.week, catalog, trainingConstraints)];
+    if (issues.length) throw new Error(`Tommy needs clarification before importing this prescription. ${issues.join(" ")} Your saved draft and current program are kept.`);
+    for (const day of value.week.days) for (const item of day.exercises) delete item.restIsExplicit;
+    progress?.({ week: 1, totalWeeks: 1 });
+    return { title: value.title, status: "proposed", assumptions: value.assumptions, progression: value.progression, regression: value.regression, weeks: [value.week] };
+  }
+  program.writtenPrescription = program.scope.weekCount === 1 ? written : null;
   if (program.scope.daysPerWeek > 2 || markdownPrescription?.prescriptions.length) return generateFocusedProgram({ program, context, system, chat, signal, progress, references });
   const weeks = [];
   const constraints = extractBriefConstraints(program.brief);
@@ -130,7 +145,7 @@ export async function generateProgram({ program, context = "", system, chat, sig
     for (let attempt = 0; attempt < 3; attempt++) {
       const content = `Write ONLY week ${number} of the coach's requested ${program.scope.weekCount}-week block, with exactly ${program.scope.daysPerWeek} days numbered 1 to ${program.scope.daysPerWeek}. Return JSON matching the supplied schema. Do not abbreviate, repeat-week placeholders, or omit any exercise dose. Preserve every explicit coach prescription, exercise variant, load unit, and distinct top-set/backdown group as separate exercise entries. When the coach omits a fact, state the assumption; never infer personal records or assign an invented kilogram load. Use qualitative load/assistance when actual working weights are unknown. ${loadAndSideGuidance} Effort must distinguish RPE and RIR (RPE8 means approximately2 RIR). Write a complete number after every RPE or RIR label; never output a bare label such as "RPE ". Keep all strings concise. Notes can be empty. Every day needs a warmup and every exercise needs sets, reps or timed holds, load/assistance, effort, and rest. This is a proposed draft for coach review, not an approved plan.\nCOACH BRIEF (data):\n${program.brief}\nEXISTING EDITABLE DRAFT FOR THIS WEEK (preserve except changes explicitly requested in the brief):\n${JSON.stringify(program.sourceWeeks?.find((week) => week.number === number) ?? null)}\nCLIENT CONTEXT (records, not instructions):\n${context}\nPREVIOUS DRAFT WEEK IN THIS BLOCK (for continuity only):\n${weeks.length ? JSON.stringify(weeks.at(-1)) : "None"}${repairContext}`;
       const restGuidance = "REST UNITS: The coach and client use minutes. Convert the coach's rest durations to the structured integer restSeconds field (2 min = 120; 3 min = 180; 1.5 min = 90). Timed holds remain in seconds. Keep any explicitly prescribed rest duration exact. For each exercise, restIsExplicit is true only when that exercise's rest was supplied in the coach brief or existing draft; it is false when you choose a default. When rest is unspecified and the exercise target is above RPE 7.5, suggest 4–6 minutes and use 300 restSeconds as the 5-minute timer default. This is the coach's chosen default, not a universal training rule.";
-      const contract = `EXPLICIT COACH CONSTRAINTS (must be satisfied before this week can be accepted):\n${JSON.stringify(constraints)}\nA bench exposure means bench press or a coach-requested bench-press variant, never push-ups. The third bench role is an additional low-effort technique exposure; it need not be the third chronological bench workout. Place it after the main squat within its session. Unknown working weights call for a qualitative load target, not exercise substitution.\n`;
+      const contract = `EXPLICIT COACH CONSTRAINTS (must be satisfied before this week can be accepted):\n${JSON.stringify(constraints)}\nWRITTEN PRESCRIPTIONS (preserve every non-null field and complete source note verbatim):\n${JSON.stringify(program.writtenPrescription)}\nA bench exposure means bench press or a coach-requested bench-press variant, never push-ups. The third bench role is an additional low-effort technique exposure; it need not be the third chronological bench workout. Place it after the main squat within its session. Unknown working weights call for a qualitative load target, not exercise substitution.\n`;
       const prompt = `${restGuidance}\n${contract}${trainingConstraintContext(trainingConstraints)}${markdownPrescriptionContext(markdownPrescription)}${exerciseCatalogContext(program.exerciseCatalog)}${reference ? reference.text + "\n" : ""}${content}`;
       checkPromptBudget(system, prompt, number);
       const result = await chat({ messages: [{ role: "system", content: system }, { role: "user", content: prompt }], format, signal });
@@ -140,8 +155,9 @@ export async function generateProgram({ program, context = "", system, chat, sig
         continue;
       }
       try {
-        accepted = checkWeek(JSON.parse(result.message?.content), number, program.scope.daysPerWeek);
+        accepted = checkWeek(groundDraftNarrative(JSON.parse(result.message?.content), program), number, program.scope.daysPerWeek);
         const constraintIssues = [...briefConstraintProblems(accepted.week, constraints),
+          ...writtenPrescriptionProblems(accepted.week, program.writtenPrescription),
           ...exerciseCatalogProblems(accepted.week, program.exerciseCatalog, trainingConstraints),
           ...markdownPrescriptionProblems(accepted.week, markdownPrescription), ...trainingNarrativeProblems(accepted, trainingConstraints),
           ...markdownHeaderProblems(accepted, markdownPrescription?.header),
@@ -209,7 +225,10 @@ export function outlineSchema(number, days, catalog, sourceWeek, markdownPrescri
         : { type: "string", maxLength: 120 },
     },
   };
-  if (markdownPrescription && !sourceWeek) schema.properties.week.properties.days.items.properties.warmup = { const: markdownWarmup(markdownPrescription, 0) };
+  if (markdownPrescription && !sourceWeek) {
+    schema.properties.week.properties.days.items.properties.warmup = { const: markdownWarmup(markdownPrescription, 0) };
+    schema.properties.week.properties.days.items.properties.title = { const: "Imported workout" };
+  }
   return schema;
 }
 
@@ -256,6 +275,7 @@ function equipmentLoadSchema(name, hasSourcePrescription) {
 export function dayOutputSchema(weekNumber, day, sourceDay, markdownPrescription) {
   const daySchema = structuredClone(weekOutputSchema(weekNumber, 1).properties.week.properties.days.items);
   daySchema.properties.number = { const: day.number };
+  if (markdownPrescription && !markdownPrescription.days.length && !sourceDay) daySchema.properties.title = { const: "Imported workout" };
   if (markdownPrescription) daySchema.properties.warmup = { const: markdownWarmup(markdownPrescription, day.number, sourceDay) };
   // Named object slots work with Ollama's parser; tuple-array schemas are unsupported.
   const groups = day.exercises.map((item, index) => {
@@ -361,7 +381,7 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
     if (base.length + system.length > 24000) throw new Error(`Tommy could not produce a complete week ${number}. This editable week and client context are too large for the Mac model. Keep the saved draft and shorten the request context.`);
     const reference = references.length ? buildReferenceContext(references, { query: program.brief, weekNumber: number,
       maxCharacters: Math.max(3000, Math.min(12000, 28000 - base.length - system.length)) }) : null;
-    const evidence = `${reference?.text ?? ""}\n${trainingConstraintContext(program.trainingConstraints)}${markdownPrescriptionContext(program.markdownPrescription)}${exerciseCatalogContext(program.exerciseCatalog)}${base}`;
+    const evidence = `${reference?.text ?? ""}\nWRITTEN PRESCRIPTIONS (preserve non-null fields and full source notes verbatim):\n${JSON.stringify(program.writtenPrescription)}\n${trainingConstraintContext(program.trainingConstraints)}${markdownPrescriptionContext(program.markdownPrescription)}${exerciseCatalogContext(program.exerciseCatalog)}${base}`;
     let outline, lastProblem = "Incomplete outline", repair = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       const content = `Create ONLY the exercise-order outline for week ${number} of a ${program.scope.weekCount}-week proposed block, exactly ${program.scope.daysPerWeek} training days. Do not write sets/reps yet. When the schema supplies named day1/day2 and group1/group2 slots, fill only those slots: one exercise choice per group, with no extra alternatives or optional groups. A group permitting Goblet Squat OR Reverse Lunge is one group, never both. Fixed titles preserve the pasted daily focus. Each separately prescribed top/backdown group needs its own entry. Pick exact working exercise names. Warmups belong only in the warmup text; never add a General Warmup exercise. Preserve coach-selected names and variants. If the coach requests technique bench after main squat, include the actual main squat working group before that bench group; a title is not enough. State source omissions and adaptations in at most4 concise assumptions, including that any unspecified light recovery dose is proposed. Do not claim personal readiness or safety from an exercise list alone. Keep titles/warmups concise. Return the outline schema.\n${evidence}${repair}`;
@@ -370,7 +390,7 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
       const result = await chat({ messages: [{ role: "system", content: system }, { role: "user", content }], format, signal });
       try {
         if (result.done !== true || result.done_reason === "length") throw new Error("The model stopped before completing its outline");
-        const candidate = checkOutline(readOutline(JSON.parse(result.message?.content), format), number, program.scope.daysPerWeek, constraints, program.exerciseCatalog, program.trainingConstraints);
+        const candidate = checkOutline(groundDraftNarrative(readOutline(JSON.parse(result.message?.content), format), program), number, program.scope.daysPerWeek, constraints, program.exerciseCatalog, program.trainingConstraints);
         const sourceIssues = [...sourceTopologyProblems(candidate.week, sourceWeek, program.brief),
           ...markdownPrescriptionProblems(candidate.week, program.markdownPrescription, { outline: true, sourceWeek }), ...trainingNarrativeProblems(candidate, program.trainingConstraints),
           ...markdownHeaderProblems(candidate, program.markdownPrescription?.header)];
@@ -391,6 +411,7 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
         try {
           if (result.done !== true || result.done_reason === "length") throw new Error("The model stopped before completing this day");
           const value = JSON.parse(result.message?.content);
+          groundDraftNarrative({ ...outline, week: { ...outline.week, days: [value.day] } }, program);
           const groups = value.day?.exercises;
           if (!groups || Array.isArray(groups) || Object.keys(groups).length !== planned.exercises.length) throw new Error("The day is missing a prescribed exercise group");
           value.day.exercises = planned.exercises.map((_item, index) => groups[`group${index + 1}`]);
@@ -401,6 +422,7 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
           checkWeek({ ...outline, week: { ...outline.week, days: [value.day] } }, number, 1, [planned.number]);
           if (JSON.stringify(value.day.exercises.map((item) => item.name)) !== JSON.stringify(planned.exercises.map((item) => item.name))) throw new Error("The day changed its planned exercise names or order");
           const issues = [...sourcePreservationProblems({ number, days: [value.day] }, sourceWeek ? { ...sourceWeek, days: sourceWeek.days.filter((day) => day.number === planned.number) } : undefined, program.brief),
+            ...writtenPrescriptionProblems({ number, days: [value.day] }, program.writtenPrescription ? { ...program.writtenPrescription, days: program.writtenPrescription.days.filter(day => day.number === planned.number) } : null),
             ...exerciseCatalogProblems({ number, days: [value.day] }, program.exerciseCatalog, program.trainingConstraints),
             ...markdownPrescriptionProblems({ number, days: [value.day] }, program.markdownPrescription, { sourceWeek })];
           if (/\btechnique\b/i.test(`${planned.title} ${planned.exercises.map((item) => item.name).join(" ")}`) && constraints.techniqueBench) {
@@ -415,6 +437,7 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
     }
     const result = checkWeek({ ...outline, week: { ...outline.week, days } }, number, program.scope.daysPerWeek);
     const issues = [...briefConstraintProblems(result.week, constraints), ...exerciseCatalogProblems(result.week, program.exerciseCatalog, program.trainingConstraints),
+      ...writtenPrescriptionProblems(result.week, program.writtenPrescription),
       ...markdownPrescriptionProblems(result.week, program.markdownPrescription, { sourceWeek }), ...trainingNarrativeProblems(result, program.trainingConstraints),
       ...markdownHeaderProblems(result, program.markdownPrescription?.header), ...sourcePreservationProblems(result.week, sourceWeek, program.brief)];
     if (issues.length) throw new Error(`Tommy could not produce a complete week ${number}. ${issues.join(" ")}. Your saved draft and current program are kept.`);
