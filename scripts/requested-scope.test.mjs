@@ -19,3 +19,10 @@ test("unsupported explicit scopes fail instead of silently reverting to four wee
   assert.throws(() => resolveRequestedScope("Give me for 17 weeks, daily", selected), /1 and 16/);
   assert.throws(() => resolveRequestedScope("Only weeks 7–6", selected), /ordered/);
 });
+test("only one numbered week and its complete day labels replace stale selectors", () => {
+  assert.deepEqual(resolveRequestedScope("Only week 9. Day 1. Squat. Day 2. Bench.",selected).scope,{startWeek:9,weekCount:1,daysPerWeek:2});
+  assert.deepEqual(resolveRequestedScope("Just week 12, day 1. Deadlift.",selected).scope,{startWeek:12,weekCount:1,daysPerWeek:1});
+  assert.deepEqual(resolveRequestedScope("Write week 6, 3 days/week.",selected).scope,{startWeek:6,weekCount:1,daysPerWeek:3});
+  assert.deepEqual(resolveRequestedScope("Do not give me only week 8. Keep my schedule.",selected).scope,selected);
+  assert.throws(()=>resolveRequestedScope("Only week 53",selected),/weeks 1–52/);
+});

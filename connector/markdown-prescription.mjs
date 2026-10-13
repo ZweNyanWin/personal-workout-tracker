@@ -276,6 +276,7 @@ export function markdownPrescriptionProblems(week, contract, { outline = false, 
     const recipe = contract.days.find((item) => item.number === day.number);
     if (contract.days.length && !recipe) { issues.push(`Day ${day.number} is outside the pasted weekly flow.`); continue; }
     const sourceDay = sourceWeek?.days.find((source) => source.number === day.number);
+    if (!contract.days.length && !sourceDay && day.title !== "Imported workout") issues.push(`Day ${day.number} changed the generic import title; do not invent a lift focus that contradicts the table.`);
     if (day.warmup !== markdownWarmup(contract, day.number, sourceDay)) issues.push(`Day ${day.number} changed the source warm-up annotation. Preserve explicit coach guidance; do not invent a warm-up or claim none is needed.`);
     if (recipe?.recovery) {
       for (const exercise of day.exercises ?? []) if (!(recipe.recoveryChoices ?? []).some((name) => normalize(name) === normalize(exercise.name))) {

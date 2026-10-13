@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { generateProgram } from "./program-generation.mjs";
 import { buildReferenceContext, loadReferenceLibrary } from "./references.mjs";
 import { validateExerciseCatalog } from "./exercise-catalog.mjs";
+import { safetyAnswer, calculationAnswer, completeAnswer } from "./answer-guards.mjs";
 
 const HOST = "127.0.0.1";
 const OLLAMA = "http://127.0.0.1:11434";
@@ -246,6 +247,8 @@ export function createGateway({
           options: { temperature: 0.1, top_k: 20, top_p: 0.8, repeat_penalty: 1, num_ctx: 16384, num_predict: 6144 } }),
       }));
       if (program) {
+        const urgent = safetyAnswer(`${program.brief}\n${program.trainingContext ?? ""}`);
+        if (urgent) throw new Error(`Tommy could not produce a complete week ${program.scope.startWeek}. ${urgent}`);
         const ownedReferences = job.userId === referenceOwnerId ? references : [];
         const draft = await generateProgramImpl({ program, context, system: SYSTEM, chat, signal: job.controller.signal, references: ownedReferences,
           progress: (value) => { job.progress = value; } });
@@ -253,6 +256,13 @@ export function createGateway({
         const answer = JSON.stringify(draft);
         if (Buffer.byteLength(answer, "utf8") > 900 * 1024) throw new Error("Program result exceeds the bounded response size");
         job.answer = answer;
+        job.status = "completed"; job.finishedAt = now();
+        return;
+      }
+      const grounded = safetyAnswer(messages.at(-1).content) ?? calculationAnswer(messages.at(-1).content);
+      if (grounded) {
+        if (job.status !== "running") return;
+        job.answer = grounded;
         job.status = "completed"; job.finishedAt = now();
         return;
       }
@@ -271,13 +281,7 @@ export function createGateway({
         }),
       }));
       if (job.status !== "running") return;
-      const answer = result.message?.content;
-      if (result.done !== true || typeof answer !== "string" || !answer.trim()) throw new Error("Incomplete response");
-      const truncated = result.done_reason === "length" || answer.trim().length > 20000;
-      const notice = "\n\n[This response reached its limit and may be incomplete. Ask for a smaller block or fewer weeks.]";
-      job.answer = truncated
-        ? answer.trim().slice(0, 20000 - notice.length) + notice
-        : answer.trim();
+      job.answer = completeAnswer(result);
       job.status = "completed";
       job.finishedAt = now();
     } catch (error) {
