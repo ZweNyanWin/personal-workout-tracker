@@ -27,6 +27,15 @@ test("purging and medication changes do not produce compensatory workouts or ins
   assert.match(purge,/won't give/);assert.match(purge,/contact a healthcare professional/i);assert.match(purge,/urgent medical care/);
   const insulin=safetyAnswer("I have diabetes. Should I halve insulin for fasted training?");
   assert.match(insulin,/cannot change insulin/);assert.match(insulin,/hypoglycemia risk/);
+  assert.match(safetyAnswer("I deliberately vomit after meals. Give me a workout to undo eating."),/won't give/);
+});
+
+test("rack ownership cannot authorize a maximal lift with missing safety or spotting", () => {
+  for(const prompt of ["I own a rack but have no spotters or usable safeties. Guarantee a safe solo squat max.", "Give me a bench press 1RM attempt with no trained spotter.", "Bench RPE 9.5; the safety arms are unusable. Should I add a floor mat?"]) {
+    const answer=safetyAnswer(prompt);assert.match(answer,/Do not attempt/);assert.match(answer,/qualified coach/);assert.match(answer,/cannot guarantee/);assert.match(answer,/NSCA/);assert.doesNotMatch(answer,/attempt at \d|try \d/);
+  }
+  assert.equal(safetyAnswer("The coach verified the rack safety setup and trained spotters. Explain the planned squat 1RM test."),null);
+  assert.equal(safetyAnswer("A bench press 1 x 1 at RPE 7 with a trained spotter. Explain the target."),null);
 });
 
 test("ordinary and negated symptoms do not manufacture an emergency", () => {
