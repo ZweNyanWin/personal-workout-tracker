@@ -43,6 +43,17 @@ test("selected ordinal week imports only that source week from a long document",
   assert.deepEqual(draft.weeks.map(week=>week.number),[12]);assert.equal(draft.weeks[0].days[0].exercises[0].loadOrAssistance,"113 kg");
 });
 
+test("reformatting a saved draft uses the complete pasted source rather than regenerating old content",async()=>{
+  const brief=syntheticWrittenProgram();
+  const original=await generateProgram({program:{brief,scope:{startWeek:1,weekCount:12,daysPerWeek:4},exerciseCatalog:catalog},system:"rules",signal:new AbortController().signal,chat:async()=>{throw Error("unexpected");}});
+  const previous=structuredClone(original.weeks);
+  previous[0].days[0].exercises[0].loadOrAssistance="999 kg";
+  previous[0].days[0].exercises[0].name="Old generated variation";
+  const next=await generateProgram({program:{brief,sourceWeeks:previous,scope:{startWeek:1,weekCount:12,daysPerWeek:4},exerciseCatalog:catalog},system:"rules",signal:new AbortController().signal,chat:async()=>{throw Error("Written targets must not be regenerated on retry");}});
+  assert.deepEqual(next.weeks,original.weeks);
+  assert.equal(previous[0].days[0].exercises[0].loadOrAssistance,"999 kg","Recovery content stays untouched");
+});
+
 test("all twelve partially specified weeks use bounded week/day calls and preserve every written target",async()=>{
   const brief=syntheticWrittenProgram().replaceAll(/, RPE \d/g,"");
   const context="Synthetic client records. ".repeat(450)+" END CLIENT RULE";

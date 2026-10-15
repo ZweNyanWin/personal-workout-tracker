@@ -131,7 +131,10 @@ export async function generateProgram({ program, context = "", system, chat, sig
       ? `\nEARLIER WRITTEN WEEK (reference for names/abbreviations only; current-week values take priority, missing values remain unknown):\n${first.text}\n` : "";
     const result = await generateBlock({ program: { ...program, brief, referenceText: glossary, trainingConstraints, previousWeek: weeks.at(-1),
       scope: { ...program.scope, startWeek: number, weekCount: 1 },
-      sourceWeeks: program.sourceWeeks?.filter(week => week.number === number) },
+      // The pasted document is the source of truth, including on a retry of a
+      // saved draft. Old generated content is recovery data, not a second set
+      // of source prescriptions that can override explicit written targets.
+      sourceWeeks: undefined },
       context, system, chat, signal, references,
       progress: detail => progress?.({ ...detail, week: offset + 1, totalWeeks: program.scope.weekCount }),
     });
