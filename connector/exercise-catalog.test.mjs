@@ -13,8 +13,8 @@ test("catalog accepts bounded canonical rows and treats an absent legacy catalog
   const catalog = [entry(1, "Paused Bench Press", { category: "push", equipment: "barbell" }), entry(2, "Tuck Front Lever")];
   assert.equal(validateExerciseCatalog(catalog), catalog);
   assert.deepEqual(validateExerciseCatalog(undefined), []);
-  assert.match(exerciseCatalogContext(catalog), /server-supplied data/);
-  assert.match(exerciseCatalogContext(catalog), /own saved exercises first/);
+  assert.match(exerciseCatalogContext(catalog), /server-supplied saved entries/);
+  assert.match(exerciseCatalogContext(catalog), /saved entries and any explicitly written coach source names/);
   assert.equal(exerciseCatalogContext([]), "");
 });
 

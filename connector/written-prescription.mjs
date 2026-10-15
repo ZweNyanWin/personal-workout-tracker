@@ -1,4 +1,5 @@
-import { isMainCompound, mainCompoundProblems, exerciseDoseProblems } from "../lib/coach/exercise-rules.mjs";
+import { isMainCompound, mainCompoundProblems, exerciseDoseProblems, mainRpeValue } from "../lib/coach/exercise-rules.mjs";
+import { isDeepStrictEqual } from "node:util";
 
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const boundaries = /\b(?:This is an? |No additional working|No automatic progression|Keep status proposed|Keep warmups separate|Keep warm-ups separate|Regress only|Day\s*#?\s*\d+\b)/i;
@@ -83,14 +84,41 @@ export function extractWrittenPrescription(brief, scope, catalog = []) {
     if (!Number.isInteger(day) || day < 1 || day > scope.daysPerWeek || week !== scope.startWeek) issues.push("Each written group needs an unambiguous day in the requested week.");
     if (sets < 1 || sets > 10 || min < 1 || max < min || max > (seconds ? 120 : 100)) issues.push("The written working dose is outside the supported bounds.");
     if (item.notes.length > 400) issues.push("The complete coach source cue exceeds the bounded note size; shorten it without dropping instructions.");
-    if (load && effort) issues.push(...mainCompoundProblems(item), ...exerciseDoseProblems(item));
-    const record = days.find(value => value.number === day) ?? { number: day, title: `Day ${day}`, exercises: [] };
+    const rangeChoice = isMainCompound(item.name) && rpe?.[2] && Number(rpe[1]) >= 5 && Number(rpe[2]) <= 10 && Number(rpe[1]) <= Number(rpe[2]) && [Number(rpe[1]),Number(rpe[2])].every(value=>Number.isInteger(value*2));
+    if (load && effort) issues.push(...mainCompoundProblems(rangeChoice ? {...item,effort:`RPE ${rpe[1]}`} : item), ...exerciseDoseProblems(item));
+    const heading = [...brief.matchAll(new RegExp(`^[\\t ]*Day\\s*#?\\s*${day}\\s*[—–-]\\s*([^\\r\\n]+)`, "gim"))].at(-1)?.[1]?.trim();
+    const record = days.find(value => value.number === day) ?? { number: day, title: heading ?? `Day ${day}`, exercises: [] };
     if (!days.includes(record)) days.push(record);
     record.exercises.push(item);
   }
+  // A numbered source skill may prescribe attempts without a hold duration.
+  // Keep its attempt count distinct; any duration is explicitly a proposal.
+  let extraRows=0;
+  for(const hit of identities.filter(hit=>!found.some(source=>source.index===hit.index))) {
+    const lineStart=brief.lastIndexOf("\n",hit.index-1)+1;
+    if(!/^\s*\d+[.)]\s*$/.test(brief.slice(lineStart,hit.index)))continue;
+    const source=brief.slice(hit.index,brief.indexOf("\n",hit.index) < 0 ? brief.length : brief.indexOf("\n",hit.index)).trim();
+    const attempts=/\b(\d+)(?:\s*[-–]\s*(\d+))?\s+attempts?\b/i.exec(source);
+    if(!attempts)continue;
+    const day=Number([...brief.slice(0,hit.index).matchAll(/\bday\s*#?\s*(\d+)\b/gi)].at(-1)?.[1] ?? (scope.daysPerWeek===1 ? 1 : NaN));
+    const record=days.find(value=>value.number===day);
+    if(!record)continue;
+    const min=Number(attempts[1]),max=Number(attempts[2]??attempts[1]);
+    if(min<1 || max<min || max>10){issues.push("The written skill attempt count needs clarification within 1–10 attempts.");continue;}
+    const next=found.find(value=>value.index>hit.index && Number([...brief.slice(0,value.index).matchAll(/\bday\s*#?\s*(\d+)\b/gi)].at(-1)?.[1])===day);
+    const position=next ? record.exercises.findIndex(item=>item.notes.startsWith(`Coach source: ${brief.slice(next.index,next.end)}`)) : -1;
+    const item={name:hit.entry.name,sets:null,dose:null,loadOrAssistance:null,effort:null,restSeconds:null,restIsExplicit:false,attempts:{min,max},
+      notes:`Coach source: ${source} Each set is one attempt. Hold duration, if shown, is proposed for review; it was not supplied.`};
+    if(position<0)record.exercises.push(item);else record.exercises.splice(position,0,item);
+    extraRows++;
+  }
   const complete = scope.weekCount === 1 && found.length === identities.length && !issues.length && days.length === scope.daysPerWeek && days.every(day => day.exercises.length <= 12 && day.exercises.every(item =>
+    (!isMainCompound(item.name) || mainRpeValue(item.effort)!==null) &&
     item.loadOrAssistance && item.effort && Number.isInteger(item.restSeconds) && item.restSeconds >= 15 && item.restSeconds <= 600));
-  return { days: days.sort((a,b) => a.number - b.number), complete,
+  const topologyComplete = scope.weekCount === 1 && found.length+extraRows === identities.length && !issues.length
+    && days.length === scope.daysPerWeek && days.every(day => day.exercises.length <= 12 && day.exercises.every(item =>
+      !isMainCompound(item.name) || (item.dose?.kind === "reps" && item.dose.range.min === item.dose.range.max)));
+  return { days: days.sort((a,b) => a.number - b.number), complete, topologyComplete,
     closed: /\b(?:no|without)\s+(?:additional|extra|other)\s+working\s+(?:groups|sets|exercises)\b/i.test(brief), issues: [...new Set(issues)] };
 }
 
@@ -103,8 +131,11 @@ export function writtenPrescriptionProblems(week, contract) {
     for (const [index, source] of day.exercises.entries()) {
       const next = actual[index];
       for (const field of ["name", "sets", "dose", "loadOrAssistance", "effort", "restSeconds"]) {
-        if (source[field] !== null && source[field] !== undefined && JSON.stringify(source[field]) !== JSON.stringify(next?.[field])) issues.push(`Day ${day.number}, group ${index + 1} changed its written ${field}.`);
+        const bounds=field==="effort" && isMainCompound(source.name) ? /^RPE\s*(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)$/.exec(source.effort??"") : null;
+        if(bounds && mainRpeValue(next?.effort)!==null && mainRpeValue(next.effort)>=Number(bounds[1]) && mainRpeValue(next.effort)<=Number(bounds[2]))continue;
+        if (source[field] !== null && source[field] !== undefined && !isDeepStrictEqual(source[field], next?.[field])) issues.push(`Day ${day.number}, group ${index + 1} changed its written ${field}.`);
       }
+      if(source.attempts && (next?.sets<source.attempts.min || next?.sets>source.attempts.max))issues.push(`Day ${day.number}, group ${index+1} changed the source skill attempt count.`);
       if (!String(next?.notes ?? "").includes(source.notes)) issues.push(`Day ${day.number}, group ${index + 1} dropped its complete coach source cue.`);
     }
   }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { extractWrittenPrescription, writtenPrescriptionProblems } from "./written-prescription.mjs";
-import { generateProgram } from "./program-generation.mjs";
+import { generateProgram, dayOutputSchema } from "./program-generation.mjs";
 import { resolveBriefRestPrescriptions } from "./rest-prescription.mjs";
 
 const catalog = ["Bench Press", "Tempo Squat", "Dumbbell Row", "Plank", "Romanian Deadlift"].map((name,index) => ({ id: `73000000-0000-4000-8000-${String(index).padStart(12,"0")}`, name, equipment: name.includes("Dumbbell") ? "dumbbell" : name === "Plank" ? "bodyweight" : "barbell" }));
@@ -55,6 +55,15 @@ test("numerical source drift, extra groups and truncated source cues are rejecte
   assert.match(errors,/written sets/);assert.match(errors,/complete coach source cue/);assert.match(errors,/working-group count/);
 });
 
+test("equivalent JSON property order is accepted while changed dose endpoints are rejected", () => {
+  const contract=extractWrittenPrescription(brief,scope,catalog),week={number:6,days:structuredClone(contract.days)};
+  const item=week.days[0].exercises[0], dose=item.dose;
+  item.dose={perSide:dose.perSide,range:{max:dose.range.max,min:dose.range.min},kind:dose.kind};
+  assert.deepEqual(writtenPrescriptionProblems(week,contract),[]);
+  item.dose.range.max++;
+  assert.match(writtenPrescriptionProblems(week,contract).join(" "),/written dose/);
+});
+
 test("ambiguous multiweek/general distributions and incomplete loading are not silently imported", () => {
   assert.equal(extractWrittenPrescription("Bench Press on days 1 and 2, 3 x 5, RPE 7, rest 2 min.",scope,catalog),null);
   assert.equal(extractWrittenPrescription(brief,{...scope,weekCount:2},catalog).complete,false);
@@ -97,4 +106,39 @@ test("per-hand implements remain explicit and unspecified loads cannot inherit a
   const fractional=extractWrittenPrescription("Bench Press 2 x 4 at 69 kg RPE 7 rest 1.001 min.",{...scope,daysPerWeek:1},catalog);
   assert.equal(fractional.complete,false);
   assert.match(fractional.issues.join(" "),/whole-second precision/);
+});
+
+test("written main-lift RPE ranges constrain a scalar proposal and preserve the full cue", () => {
+  const contract=extractWrittenPrescription("Day 1. Bench Press 1x1 @ 91 kg (RPE 7–7.5).", {...scope,daysPerWeek:1},catalog);
+  assert.equal(contract.complete,false);
+  assert.equal(contract.topologyComplete,true);
+  const day=contract.days[0],schema=dayOutputSchema(6,day,undefined,undefined,day).properties.day.properties.exercises.properties.group1;
+  assert.deepEqual(schema.properties.effort,{enum:["RPE 7","RPE 7.5"]});
+  assert.deepEqual(schema.properties.reps,{const:1});
+  const week={number:6,days:structuredClone(contract.days)};
+  week.days[0].exercises[0].effort="RPE 7.5";
+  assert.deepEqual(writtenPrescriptionProblems(week,contract),[]);
+  week.days[0].exercises[0].effort="RPE 8";
+  assert.match(writtenPrescriptionProblems(week,contract).join(" "),/written effort/);
+  assert.match(day.exercises[0].notes,/RPE 7–7.5/);
+});
+
+test("numbered skill attempts retain their count and order without inventing a source hold duration", () => {
+  const entries=[...catalog,{id:"73000000-0000-4000-8000-999999999999",name:"Handstand Practice",equipment:"bodyweight"}];
+  const contract=extractWrittenPrescription("Day 1 — Practice\n1. Handstand Practice: 5–8 attempts\n2. Plank: 2x20 sec, bodyweight, easy, rest 1 min.", {...scope,daysPerWeek:1},entries);
+  assert.equal(contract.complete,false);
+  assert.equal(contract.topologyComplete,true);
+  const day=contract.days[0],skill=day.exercises[0];
+  assert.equal(skill.name,"Handstand Practice");
+  assert.deepEqual(skill.attempts,{min:5,max:8});
+  assert.equal(skill.dose,null);
+  const schema=dayOutputSchema(6,day,undefined,undefined,day).properties.day.properties.exercises.properties.group1;
+  assert.deepEqual(schema.properties.sets,{type:"integer",minimum:5,maximum:8});
+  assert.equal(schema.properties.dose.properties.kind.const,"hold");
+  const week={number:6,days:structuredClone(contract.days)};
+  Object.assign(week.days[0].exercises[0],{sets:6,dose:{kind:"hold",seconds:{min:5,max:5}},loadOrAssistance:"Bodyweight",effort:"Stop before position loss",restSeconds:60});
+  assert.deepEqual(writtenPrescriptionProblems(week,contract),[]);
+  week.days[0].exercises[0].sets=3;
+  assert.match(writtenPrescriptionProblems(week,contract).join(" "),/attempt count/);
+  assert.match(skill.notes,/duration.*proposed.*not supplied/);
 });

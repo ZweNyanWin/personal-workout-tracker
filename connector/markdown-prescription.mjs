@@ -1,5 +1,6 @@
 import { extractTrainingConstraints } from "../lib/coach/training-constraints.mjs";
 import { isMainCompound } from "../lib/coach/exercise-rules.mjs";
+import { PROGRAM_BRIEF_LIMIT } from "../lib/coach/program-input.mjs";
 
 const clean = (text) => String(text ?? "").replace(/\*\*|__/g, "").trim();
 const normalize = (text) => clean(text).normalize("NFKC").toLowerCase().replace(/[’']/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
@@ -118,7 +119,7 @@ export function markdownHeaderProblems(value, header) {
  * the table's numerical targets. Ambiguous/missing canonical identities fail
  * clearly; this bounded parser is not a general document importer. */
 export function extractMarkdownPrescription(brief, catalog = []) {
-  if (typeof brief !== "string" || brief.length > 6000) throw new Error("The pasted coaching brief must be at most 6,000 characters.");
+  if (typeof brief !== "string" || brief.length > PROGRAM_BRIEF_LIMIT) throw new Error("The pasted program must be at most 64,000 characters.");
   const parsed = tables(brief), prescriptions = [], days = [], issues = [];
   const sourceGuidance = explicitGuidance(brief);
   const effort = /\beffort\s*:\s*RPE\s*(\d+(?:\.\d+)?)(?:\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?))?/i.exec(clean(brief));

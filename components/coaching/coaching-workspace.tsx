@@ -31,6 +31,7 @@ import {
 } from "@/lib/coach/workflow-schema";
 import { CoachingProgramEditor } from "./program-editor";
 import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
+import { PROGRAM_BRIEF_LIMIT, writtenProgramWeeks } from "@/lib/coach/program-input.mjs";
 import { createClient } from "@/lib/supabase/client";
 import { withDeadline } from "@/lib/async/deadline";
 import { createDraftSession, createWorkspaceLoadGuard, pendingDraftJob, type DraftJob as Job, type DraftJobState } from "@/lib/coach/draft-session";
@@ -898,7 +899,15 @@ export function MemberCoachingWorkspace({
                       setDirty(true);
                       setReviewed(false);
                     }}
-                    maxLength={6000}
+                    maxLength={PROGRAM_BRIEF_LIMIT}
+                    onPaste={(event) => {
+                      const field = event.currentTarget;
+                      const length = brief.length - (field.selectionEnd - field.selectionStart) + event.clipboardData.getData("text/plain").length;
+                      if (length > PROGRAM_BRIEF_LIMIT) {
+                        event.preventDefault();
+                        setError("This program exceeds 64,000 characters. Your current text is kept; paste a smaller block. No weeks were cut off.");
+                      }
+                    }}
                     minLength={10}
                     rows={5}
                     placeholder="Example: Four-week bench-focused block, three days per week. Keep paused bench on day 1. Write separate top-set and backdown groups, use my client context, and flag any missing starting loads. Include every week's sets, reps, effort, rest, and progression rules."
@@ -907,8 +916,8 @@ export function MemberCoachingWorkspace({
                     required
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Paste your own prescriptions or describe the block. Tommy
-                    must preserve explicit sets, reps, variants, and units.
+                    Paste your written program, including its Week and Day headings, or describe a new block. Tommy preserves explicit sets, reps, variants, and units.
+                    <span className="ml-1 tabular-nums">{brief.length.toLocaleString()} / 64,000 characters</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     Your edits stay in this tab while you browse. Save draft keeps them after a reload.
@@ -931,7 +940,10 @@ export function MemberCoachingWorkspace({
                     loading={working === "start"}
                   >
                     <Sparkles className="h-4 w-4" />
-                    {content ? "Revise with Tommy" : "Draft with Tommy"}
+                    {content ? "Revise with Tommy" : (() => {
+                      try { return writtenProgramWeeks(brief) ? "Format with Tommy" : "Draft with Tommy"; }
+                      catch { return "Format with Tommy"; }
+                    })()}
                   </Button>
                   <Button
                     type="button"

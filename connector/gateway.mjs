@@ -8,6 +8,7 @@ import { buildReferenceContext, loadReferenceLibrary } from "./references.mjs";
 import { validateExerciseCatalog } from "./exercise-catalog.mjs";
 import { safetyAnswer, calculationAnswer, completeAnswer } from "./answer-guards.mjs";
 import { programGenerationTimeout } from "./program-prompt.mjs";
+import { PROGRAM_BRIEF_LIMIT } from "../lib/coach/program-input.mjs";
 
 const HOST = "127.0.0.1";
 const OLLAMA = "http://127.0.0.1:11434";
@@ -100,7 +101,7 @@ function validateConversation(value) {
   if (value.program !== undefined) {
     const p = value.program;
     if (!p || typeof p !== "object" || Array.isArray(p) || Object.keys(p).some((key) => !["scope", "brief", "sourceWeeks", "exerciseCatalog", "trainingContext"].includes(key))
-      || typeof p.brief !== "string" || !p.brief.trim() || p.brief.length > 6000 || !p.scope
+      || typeof p.brief !== "string" || !p.brief.trim() || p.brief.length > PROGRAM_BRIEF_LIMIT || !p.scope
       || Object.keys(p.scope).some((key) => !["startWeek", "weekCount", "daysPerWeek"].includes(key))
       || !Number.isInteger(p.scope.startWeek) || p.scope.startWeek < 1 || p.scope.startWeek > 52
       || !Number.isInteger(p.scope.weekCount) || p.scope.weekCount < 1 || p.scope.weekCount > 16

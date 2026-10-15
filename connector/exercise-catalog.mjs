@@ -28,7 +28,7 @@ export function exerciseCatalogProblems(week, catalog = [], constraints) {
   const issues = constraints ? trainingWeekProblems(week, constraints, catalog) : [];
   for (const day of week.days ?? []) for (const exercise of day.exercises ?? []) {
     if (catalog.length && !allowed.has(normalize(exercise.name)) && !allowed.has(normalize(withoutGroupLabel(exercise.name)))) {
-      issues.push(`Day ${day.number} includes an exercise outside the coach's saved library. Choose an exact library name or ask the coach to add the missing variation.`);
+      issues.push(`Day ${day.number} includes an exercise outside the permitted draft list. Choose an exact saved or explicitly written source name, or ask the coach to add the missing variation.`);
     }
   }
   return [...new Set(issues)];
@@ -36,5 +36,5 @@ export function exerciseCatalogProblems(week, catalog = [], constraints) {
 
 export function exerciseCatalogContext(catalog = [], { compact = false } = {}) {
   const entries = compact ? catalog.map(({ name, equipment }) => ({ name, equipment })) : catalog;
-  return catalog.length ? `COACH'S SAVED EXERCISE LIBRARY (server-supplied data, own saved exercises first):\n${JSON.stringify(entries)}\nChoose exact names from this library. Source templates are inspiration; they do not authorize inventing exercises or substituting an unavailable variation. Separate top/backdown groups may share one library name. If a required variation is missing, ask the coach to add it.\n` : "";
+  return catalog.length ? `PERMITTED DRAFT EXERCISES (server-supplied saved entries and any explicitly written coach source names):\n${JSON.stringify(entries)}\nChoose exact names from this list. A source name permits formatting the coach's prescription; it does not mean the exercise was saved, approved, available or completed. Retrieved templates do not authorize new names or substitutions. Separate top/backdown groups may share one name. If a required variation is missing, ask the coach to add it.\n` : "";
 }

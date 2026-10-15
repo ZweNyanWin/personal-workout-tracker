@@ -762,6 +762,14 @@ export function CoachChat({ active }: { active: boolean }) {
           placeholder="Ask Tommy about your training…"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
+          onPaste={(event) => {
+            const field = event.currentTarget;
+            const length = question.length - (field.selectionEnd - field.selectionStart) + event.clipboardData.getData("text/plain").length;
+            if (length > 2000) {
+              event.preventDefault();
+              setError("Chat accepts up to 2,000 characters. Paste full programs into Create with Tommy in the coach workspace, which accepts up to 64,000 characters. Your current message is kept.");
+            }
+          }}
           maxLength={2000}
           rows={3}
           disabled={busy}

@@ -5,6 +5,8 @@ import { buildClientContext } from "@/lib/coach/context";
 import { loadCoachExerciseCatalog } from "@/lib/coach/exercise-catalog";
 import { compatibleGenerationSource } from "@/lib/coach/program-source";
 import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
+import { PROGRAM_BRIEF_LIMIT, PROGRAM_REQUEST_BYTES } from "@/lib/coach/program-input.mjs";
+import { catalogWithWrittenExercises } from "@/lib/coach/written-exercises.mjs";
 import { coachingScopeSchema, workflowProgramDraftSchema, validateWorkflowProgramDraft, type CoachingDraftRecord } from "@/lib/coach/workflow-schema";
 import { coachJson, gatewayCall, GatewayRequestError, mutationFromApp, readCoachInput } from "@/lib/coach/gateway-client";
 
@@ -12,7 +14,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 const uuid = z.string().uuid();
 const input = z.object({
-  memberId: uuid, brief: z.string().trim().min(10).max(6000), scope: coachingScopeSchema,
+  memberId: uuid, brief: z.string().trim().min(10).max(PROGRAM_BRIEF_LIMIT), scope: coachingScopeSchema,
   draftId: uuid.optional(), expectedRevision: z.number().int().positive().optional(),
   mode: z.enum(["new", "continue"]).optional(),
 }).strict();
@@ -35,8 +37,8 @@ export async function POST(request: Request) {
     if (!coach) return coachJson({ error: "A coach account is required." }, 403);
     if (!mutationFromApp(request)) return coachJson({ error: "Send requests from PowerBuild." }, 403);
     if (!request.headers.get("content-type")?.startsWith("application/json")) return coachJson({ error: "Send a JSON brief." }, 415);
-    const parsed = input.safeParse(await readCoachInput(request, 30000));
-    if (!parsed.success) return coachJson({ error: "Add a brief of 10–6,000 characters and a valid week/day scope." }, 400);
+    const parsed = input.safeParse(await readCoachInput(request, PROGRAM_REQUEST_BYTES));
+    if (!parsed.success) return coachJson({ error: "Add a program of 10–64,000 characters and a valid week/day scope." }, 400);
     const { memberId, brief, draftId, expectedRevision, mode } = parsed.data;
     const scope = coachingScopeSchema.parse(resolveRequestedScope(brief, parsed.data.scope).scope);
     const { data: member } = await coach.supabase.from("profiles").select("id").eq("id", memberId).single();
@@ -65,6 +67,9 @@ export async function POST(request: Request) {
     if (profile.error) throw new Error("Client equipment and movement limitations could not be verified. Retry before drafting.");
     const trainingContext = profile.data?.training_context ?? "";
     const exerciseCatalog = await loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief, trainingContext);
+    // A coach's explicitly numbered source movement is authored input, not a
+    // model invention or an instruction to change another tenant's library.
+    exerciseCatalog.entries = catalogWithWrittenExercises(exerciseCatalog.entries, brief, trainingContext);
     const sourceWeeks = compatibleGenerationSource(previousContent, brief, trainingContext, exerciseCatalog.entries);
     // The structured catalog is sent separately. Duplicating it here consumed
     // the model budget and could cut off actual client rules or completed logs.
