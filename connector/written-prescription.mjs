@@ -46,7 +46,10 @@ export function extractWrittenPrescription(brief, scope, catalog = []) {
     const day = Number([...prefix.matchAll(/\bday\s*#?\s*(\d+)\b/gi)].at(-1)?.[1] ?? (scope.daysPerWeek === 1 ? 1 : NaN));
     if (!Number.isInteger(day) && scope.daysPerWeek > 1) return null;
     const week = Number([...prefix.matchAll(/\bweek\s*#?\s*(\d+)\b/gi)].at(-1)?.[1] ?? scope.startWeek);
-    const end = found[index + 1]?.index ?? brief.length;
+    let end = found[index + 1]?.index ?? brief.length;
+    const nextLine=brief.lastIndexOf("\n",end-1)+1;
+    // The next row's number belongs to that row, not this group's source cue.
+    if(nextLine>hit.index && /^\s*\d+[.)]\s*$/.test(brief.slice(nextLine,end)))end=nextLine;
     let source = brief.slice(hit.index, end).trim();
     const boundary = boundaries.exec(source.slice(hit.doseEnd - hit.index));
     if (boundary) source = source.slice(0, hit.doseEnd - hit.index + boundary.index).trim();
