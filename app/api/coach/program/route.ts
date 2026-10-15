@@ -6,6 +6,7 @@ import { loadCoachExerciseCatalog } from "@/lib/coach/exercise-catalog";
 import { compatibleGenerationSource } from "@/lib/coach/program-source";
 import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
 import { PROGRAM_BRIEF_LIMIT, PROGRAM_REQUEST_BYTES } from "@/lib/coach/program-input.mjs";
+import { catalogWithWrittenExercises } from "@/lib/coach/written-exercises.mjs";
 import { coachingScopeSchema, workflowProgramDraftSchema, validateWorkflowProgramDraft, type CoachingDraftRecord } from "@/lib/coach/workflow-schema";
 import { coachJson, gatewayCall, GatewayRequestError, mutationFromApp, readCoachInput } from "@/lib/coach/gateway-client";
 
@@ -66,6 +67,9 @@ export async function POST(request: Request) {
     if (profile.error) throw new Error("Client equipment and movement limitations could not be verified. Retry before drafting.");
     const trainingContext = profile.data?.training_context ?? "";
     const exerciseCatalog = await loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief, trainingContext);
+    // A coach's explicitly numbered source movement is authored input, not a
+    // model invention or an instruction to change another tenant's library.
+    exerciseCatalog.entries = catalogWithWrittenExercises(exerciseCatalog.entries, brief, trainingContext);
     const sourceWeeks = compatibleGenerationSource(previousContent, brief, trainingContext, exerciseCatalog.entries);
     // The structured catalog is sent separately. Duplicating it here consumed
     // the model budget and could cut off actual client rules or completed logs.
