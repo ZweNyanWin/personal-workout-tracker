@@ -55,6 +55,15 @@ test("numerical source drift, extra groups and truncated source cues are rejecte
   assert.match(errors,/written sets/);assert.match(errors,/complete coach source cue/);assert.match(errors,/working-group count/);
 });
 
+test("equivalent JSON property order is accepted while changed dose endpoints are rejected", () => {
+  const contract=extractWrittenPrescription(brief,scope,catalog),week={number:6,days:structuredClone(contract.days)};
+  const item=week.days[0].exercises[0], dose=item.dose;
+  item.dose={perSide:dose.perSide,range:{max:dose.range.max,min:dose.range.min},kind:dose.kind};
+  assert.deepEqual(writtenPrescriptionProblems(week,contract),[]);
+  item.dose.range.max++;
+  assert.match(writtenPrescriptionProblems(week,contract).join(" "),/written dose/);
+});
+
 test("ambiguous multiweek/general distributions and incomplete loading are not silently imported", () => {
   assert.equal(extractWrittenPrescription("Bench Press on days 1 and 2, 3 x 5, RPE 7, rest 2 min.",scope,catalog),null);
   assert.equal(extractWrittenPrescription(brief,{...scope,weekCount:2},catalog).complete,false);

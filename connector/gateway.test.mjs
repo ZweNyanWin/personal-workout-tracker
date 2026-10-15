@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import test from "node:test";
 import { createGateway } from "./gateway.mjs";
+import { syntheticWrittenProgram, syntheticCatalog } from "./fixtures/written-program.mjs";
+import { PROGRAM_BRIEF_LIMIT } from "../lib/coach/program-input.mjs";
 
 const TOKEN = "test-only-random-looking-token-with-at-least-43-characters";
 const USER = "12345678-1234-4234-8234-123456789abc";
@@ -10,6 +12,20 @@ const MESSAGES = [{ role: "user", content: "Explain a deload." }];
 const JSON_HEADERS = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 const result = (answer = "An experimental answer.", extra = {}) =>
   Response.json({ done: true, message: { content: answer }, ...extra });
+
+test("the authenticated bridge imports a full long twelve-week document and keeps chat limits separate", async t => {
+  const {start,poll,call,calls}=await setup(t);
+  const brief=syntheticWrittenProgram(); assert.ok(brief.length>6000);
+  const program={brief,scope:{startWeek:1,weekCount:12,daysPerWeek:4},exerciseCatalog:syntheticCatalog};
+  const started=await start({userId:USER,messages:[{role:"user",content:"Format the supplied coach program."}],program});
+  assert.equal(started.status,202);const completed=await terminal(poll,started.body.jobId);assert.equal(completed.body.status,"completed");
+  const draft=JSON.parse(completed.body.answer);assert.equal(draft.weeks.length,12);assert.ok(draft.weeks.every(week=>week.days.length===4));assert.equal(draft.weeks.at(-1).days.at(-1).exercises.at(-1).dose.kind,"hold");
+  assert.equal((await poll(started.body.jobId,OTHER_USER)).status,404);
+  assert.equal(calls.filter(x=>x.url.endsWith("/api/chat")).length,0,"An import cannot rewrite known targets");
+  assert.equal((await start({userId:USER,messages:MESSAGES,program:{...program,brief:"x".repeat(PROGRAM_BRIEF_LIMIT+1)}})).status,400);
+  assert.equal((await start({userId:USER,messages:[{role:"user",content:"x".repeat(2001)}]})).status,400);
+  assert.equal((await call("/v1/status",{headers:{}})).status,401);
+});
 
 test("client chat never receives private coach notes or proposed client drafts", async (t) => {
   const reference = (id, kind, title) => ({ id, kind, title, aliases: [title], summary: title, sections: [

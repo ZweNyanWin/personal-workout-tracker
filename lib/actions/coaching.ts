@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireBusinessCoach } from "@/lib/business/access";
+import { PROGRAM_BRIEF_LIMIT } from "@/lib/coach/program-input.mjs";
 import { coachingScopeSchema, workflowProgramDraftSchema, validateWorkflowProgramDraft, type CoachingDraftRecord, type CoachingProfile, type CoachingReviewRequest } from "@/lib/coach/workflow-schema";
 import type { ActionResult } from "@/types";
 import type { Json, Tables } from "@/types/database";
@@ -66,7 +67,7 @@ export async function saveCoachingDraft(input: {
 }): Promise<ActionResult<CoachingDraftRecord>> {
   try {
     const memberId = uuid.parse(input.memberId);
-    const brief = z.string().trim().min(1, "Write a coaching brief first").max(16000).parse(input.brief);
+    const brief = z.string().trim().min(1, "Write a coaching brief first").max(PROGRAM_BRIEF_LIMIT).parse(input.brief);
     const scope = coachingScopeSchema.parse(input.scope);
     const content = input.content == null ? null : workflowProgramDraftSchema.parse(input.content);
     if (input.draftId) uuid.parse(input.draftId);
