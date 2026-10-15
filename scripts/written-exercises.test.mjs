@@ -15,3 +15,9 @@ test("written names still obey equipment and stated movement bans; source names 
  const brief="Equipment: none. I cannot do dips.\nWEEK 1\nDay 1\n1. Dips: 2x8\n2. Barbell Row: 2x10\n3. Wall Push-up: 2x8\nWEEK 2\nDay 1";
  const result=catalogWithWrittenExercises([],brief);assert.deepEqual(result.map(x=>x.name),["Wall Push-up"]);
 });
+test("top-single and backdown labels remain group roles instead of new exercise identities",()=>{
+ const brief="WEEK 1\nDay 1\n1. Bench Press top single: 1x1 @ 77 kg\n2. Bench Press backdown: 2x4 @ 65 kg\nWEEK 2\nDay 1\n1. Bench Press top set: 1x3 @ 75 kg";
+ const result=catalogWithWrittenExercises(existing,brief);
+ assert.deepEqual(result.map(x=>x.name),["Bench Press"]);
+ assert.equal(result[0].id,existing[0].id);
+});

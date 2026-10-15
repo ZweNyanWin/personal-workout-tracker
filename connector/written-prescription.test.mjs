@@ -142,3 +142,10 @@ test("numbered skill attempts retain their count and order without inventing a s
   assert.match(writtenPrescriptionProblems(week,contract).join(" "),/attempt count/);
   assert.match(skill.notes,/duration.*proposed.*not supplied/);
 });
+
+test("source notes end before the following row's number",()=>{
+  const c=extractWrittenPrescription("Day 1\n1. Bench Press: 1x1 @ 77 kg RPE 7 rest 2 min.\n2. Bench Press: 2x4 @ 65 kg RPE 7 rest 2 min.",{...scope,daysPerWeek:1},catalog);
+  assert.equal(c.complete,true);
+  assert.equal(c.days[0].exercises[0].notes,"Coach source: Bench Press: 1x1 @ 77 kg RPE 7 rest 2 min.");
+  assert.equal(c.days[0].exercises[1].notes,"Coach source: Bench Press: 2x4 @ 65 kg RPE 7 rest 2 min.");
+});
