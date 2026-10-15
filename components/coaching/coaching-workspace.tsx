@@ -905,7 +905,7 @@ export function MemberCoachingWorkspace({
                       const length = brief.length - (field.selectionEnd - field.selectionStart) + event.clipboardData.getData("text/plain").length;
                       if (length > PROGRAM_BRIEF_LIMIT) {
                         event.preventDefault();
-                        setError("This program exceeds 16,000 characters. Your current text is kept; paste a smaller block. No weeks were cut off.");
+                        setError("This program exceeds 64,000 characters. Your current text is kept; paste a smaller block. No weeks were cut off.");
                       }
                     }}
                     minLength={10}
@@ -917,7 +917,7 @@ export function MemberCoachingWorkspace({
                   />
                   <p className="text-[11px] text-muted-foreground">
                     Paste your written program, including its Week and Day headings, or describe a new block. Tommy preserves explicit sets, reps, variants, and units.
-                    <span className="ml-1 tabular-nums">{brief.length.toLocaleString()} / 16,000 characters</span>
+                    <span className="ml-1 tabular-nums">{brief.length.toLocaleString()} / 64,000 characters</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     Your edits stay in this tab while you browse. Save draft keeps them after a reload.

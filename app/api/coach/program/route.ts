@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     if (!mutationFromApp(request)) return coachJson({ error: "Send requests from PowerBuild." }, 403);
     if (!request.headers.get("content-type")?.startsWith("application/json")) return coachJson({ error: "Send a JSON brief." }, 415);
     const parsed = input.safeParse(await readCoachInput(request, PROGRAM_REQUEST_BYTES));
-    if (!parsed.success) return coachJson({ error: "Add a program of 10–16,000 characters and a valid week/day scope." }, 400);
+    if (!parsed.success) return coachJson({ error: "Add a program of 10–64,000 characters and a valid week/day scope." }, 400);
     const { memberId, brief, draftId, expectedRevision, mode } = parsed.data;
     const scope = coachingScopeSchema.parse(resolveRequestedScope(brief, parsed.data.scope).scope);
     const { data: member } = await coach.supabase.from("profiles").select("id").eq("id", memberId).single();

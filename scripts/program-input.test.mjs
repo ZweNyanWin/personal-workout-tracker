@@ -12,10 +12,16 @@ test("complete this to week twelve extends the written source instead of retaini
 });
 
 test("program transport accommodates the database character limit including escaped Unicode",()=>{
-  assert.equal(PROGRAM_BRIEF_LIMIT,16000);
+  assert.equal(PROGRAM_BRIEF_LIMIT,64000);
   const escaped='{"brief":"'+"\\u754c".repeat(PROGRAM_BRIEF_LIMIT)+'","scope":{"startWeek":1,"weekCount":12,"daysPerWeek":4}}';
   assert.ok(Buffer.byteLength(escaped)<PROGRAM_REQUEST_BYTES);
   assert.equal(JSON.parse(escaped).brief.length,PROGRAM_BRIEF_LIMIT);
+});
+
+test("the storage migration expands only the text constraint and keeps authorization untouched",async()=>{
+  const sql=await readFile(new URL("../supabase/migrations/016_long_written_program_briefs.sql",import.meta.url),"utf8");
+  assert.match(sql,/CHECK \(length\(brief\) BETWEEN 1 AND 64000\)/);
+  assert.doesNotMatch(sql,/DISABLE ROW LEVEL SECURITY|CREATE POLICY|GRANT |SECURITY DEFINER|DROP TABLE/i);
 });
 
 test("program editor, dispatch, saving, connector and both source parsers use the shared program limit",async()=>{

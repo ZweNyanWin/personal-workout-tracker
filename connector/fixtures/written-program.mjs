@@ -13,3 +13,10 @@ export function syntheticWrittenProgram(count=12) {
     return line;
   }).join("\n");
 }
+
+/** Full exercise-by-exercise prose, intentionally beyond the old 16k storage
+ * limit. This is fictional source text, never a client's training record. */
+export function detailedSyntheticWrittenProgram() {
+  return syntheticWrittenProgram().split("\n").map(line => /^\d+[.)] /.test(line)
+    ? `${line} Coach cue: Keep the written dose and variation; record completed work separately, and ask the coach before changing a target.` : line).join("\n");
+}

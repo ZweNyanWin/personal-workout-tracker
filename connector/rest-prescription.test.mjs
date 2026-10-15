@@ -65,7 +65,7 @@ test("explicit ranges retain their endpoints and out-of-bounds or fractional-sec
   });
   for (const brief of ["Rest 6 to 4 min", "Rest 0.1 min", "Rest 30.5 seconds", "Rest 20 min"]) assert.throws(() => seconds(brief), /explicit rest duration/);
   assert.doesNotThrow(() => seconds("x".repeat(6001)));
-  assert.throws(() => seconds("x".repeat(16001)), /16,000/);
+  assert.throws(() => seconds("x".repeat(64001)), /64,000/);
 });
 
 test("Markdown rest labels and repeated round rest preserve the coach's home-workout range", () => {

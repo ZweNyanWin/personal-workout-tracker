@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { generateProgram, dayOutputSchema } from "./program-generation.mjs";
+import { generateProgram, dayOutputSchema, writtenDayPatch } from "./program-generation.mjs";
 import { PROGRAM_BRIEF_LIMIT, programBriefForWeek, writtenProgramWeeks } from "../lib/coach/program-input.mjs";
 import {extractWrittenPrescription} from "./written-prescription.mjs";
 import {PROGRAM_PROMPT_BYTES} from "./program-prompt.mjs";
 
-import { syntheticWrittenProgram, syntheticCatalog as catalog } from "./fixtures/written-program.mjs";
+import { syntheticWrittenProgram, detailedSyntheticWrittenProgram, syntheticCatalog as catalog } from "./fixtures/written-program.mjs";
+
+test("a detailed twelve-week source beyond 32k characters imports every final-week group without a model call",async()=>{
+  const brief=detailedSyntheticWrittenProgram();
+  assert.ok(brief.length>32000 && brief.length<=PROGRAM_BRIEF_LIMIT);
+  const draft=await generateProgram({program:{brief,scope:{startWeek:1,weekCount:12,daysPerWeek:4},exerciseCatalog:catalog},system:"rules",signal:new AbortController().signal,chat:async()=>{throw Error("Known targets must not be regenerated");}});
+  assert.equal(draft.weeks.length,12);
+  assert.equal(draft.weeks.reduce((total,week)=>total+week.days.length,0),48);
+  assert.equal(draft.weeks.reduce((total,week)=>total+week.days.reduce((n,day)=>n+day.exercises.length,0),0),192);
+  assert.match(draft.weeks.at(-1).days.at(-1).exercises.at(-1).notes,/week 12 final source cue/);
+  assert.match(draft.weeks.at(-1).days.at(-1).exercises.at(-1).notes,/ask the coach before changing a target/);
+});
 
 test("complete twelve-week written block imports all 48 sessions and 192 groups without regeneration",async()=>{
   const brief=syntheticWrittenProgram();
@@ -52,14 +63,16 @@ test("all twelve partially specified weeks use bounded week/day calls and preser
       const days=structuredClone(expected.get(n));for(const day of days){day.warmup="Confirm a familiar gradual warm-up with your coach";day.exercises=day.exercises.map(({name})=>({name}));}
       return {done:true,done_reason:"stop",message:{content:JSON.stringify({title:"Proposed formatted source",assumptions:["Proposed effort requires review"],progression:"Coach review",regression:"Ask coach",week:{number:n,focus:"Preserve source",days}})}};
     }
-    const n=Number(/Write ONLY week (\d+)/.exec(prompt)[1]), day=structuredClone(expected.get(n).find(day=>day.number===format.properties.day.properties.number.const));
+    const [,weekText,dayText]=/Write ONLY week (\d+), day (\d+)/.exec(prompt), n=Number(weekText),day=structuredClone(expected.get(n).find(day=>day.number===Number(dayText)));
     day.warmup="Confirm a familiar gradual warm-up with your coach";
     day.exercises=Object.fromEntries(day.exercises.map((item,index)=>{
       const key=`group${index+1}`;
-      if(format.properties.day.properties.exercises.properties[key].properties.reps){item.reps=item.dose.range.min;delete item.dose;}
+      const fields=format.properties.groups.properties[key]?.properties ?? {};
+      if(fields.reps){item.reps=item.dose.range.min;delete item.dose;}
+      for(const field of Object.keys(item))if(!Object.hasOwn(fields,field))delete item[field];
       return [key,item];
     }));
-    return {done:true,done_reason:"stop",message:{content:JSON.stringify({day})}};
+    return {done:true,done_reason:"stop",message:{content:JSON.stringify({groups:day.exercises})}};
   }});
   assert.equal(calls,48);assert.equal(draft.weeks.length,12);
   for(const week of draft.weeks)for(const day of week.days){const source=expected.get(week.number).find(x=>x.number===day.number);assert.deepEqual(day.exercises.map(x=>[x.name,x.sets,x.dose,x.loadOrAssistance,x.notes]),source.exercises.map(x=>[x.name,x.sets,x.dose,x.loadOrAssistance,x.notes]));}
@@ -82,4 +95,10 @@ test("formatting grammar locks supplied targets and leaves only absent effort fo
   const fields=schema.properties.day.properties.exercises.properties.group1.properties;
   assert.equal(fields.sets.const,2);assert.equal(fields.loadOrAssistance.const,"Bodyweight");assert.equal(fields.restSeconds.const,120);assert.equal(fields.dose.properties.range.properties.min.const,8);assert.equal(fields.dose.properties.range.properties.max.const,8);assert.match(fields.notes.const,/keep body aligned/);
   assert.equal(fields.effort.const,undefined);
+  const patch=writtenDayPatch(schema);
+  assert.deepEqual(Object.keys(patch.format.properties.groups.properties.group1.properties),["effort"]);
+  const restored=patch.restore({groups:{group1:{effort:"RPE 7"}}},source.days[0]).day.exercises.group1;
+  assert.equal(restored.sets,2);assert.equal(restored.restSeconds,120);assert.equal(restored.loadOrAssistance,"Bodyweight");assert.deepEqual(restored.dose,source.days[0].exercises[0].dose);assert.equal(restored.notes,source.days[0].exercises[0].notes);
+  assert.throws(()=>patch.restore({groups:{group1:{effort:"RPE 7",sets:99}}},source.days[0]),/source field/);
+  assert.throws(()=>patch.restore({groups:{group1:{effort:"RPE 7"},group2:{effort:"RPE 8"}}},source.days[0]),/unexpected/);
 });

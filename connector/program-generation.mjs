@@ -386,6 +386,41 @@ export function dayOutputSchema(weekNumber, day, sourceDay, markdownPrescription
   return { type: "object", additionalProperties: false, required: ["day"], properties: { day: daySchema } };
 }
 
+// A formatter asks the model only for source omissions. Written names, doses,
+// loads and long cues stay on the server instead of being generated again.
+function fixedSchemaValue(schema) {
+  if (Object.hasOwn(schema,"const")) return {fixed:true,value:schema.const};
+  if (schema.enum?.length===1) return {fixed:true,value:schema.enum[0]};
+  if (schema.type==="object") {
+    const entries=Object.entries(schema.properties ?? {}).map(([key,child])=>[key,fixedSchemaValue(child)]);
+    if(entries.every(([,child])=>child.fixed))return {fixed:true,value:Object.fromEntries(entries.map(([key,child])=>[key,child.value]))};
+  }
+  return {fixed:false};
+}
+
+export function writtenDayPatch(fullSchema) {
+  const groups=fullSchema.properties.day.properties.exercises.properties;
+  const properties=Object.fromEntries(Object.entries(groups).flatMap(([key,group])=>{
+    const fields=Object.fromEntries(Object.entries(group.properties).filter(([,field])=>!fixedSchemaValue(field).fixed));
+    return Object.keys(fields).length ? [[key,{type:"object",additionalProperties:false,required:Object.keys(fields),properties:fields}]] : [];
+  }));
+  const format={type:"object",additionalProperties:false,required:["groups"],properties:{groups:{type:"object",additionalProperties:false,required:Object.keys(properties),properties}}};
+  return {format,empty:!Object.keys(properties).length,restore(value,planned){
+    if(!value || Object.keys(value).some(key=>key!=="groups") || !value.groups || Array.isArray(value.groups)
+      || Object.keys(value.groups).length!==Object.keys(properties).length
+      || Object.keys(value.groups).some(key=>!Object.hasOwn(properties,key)))throw new Error("The formatter returned unexpected source-edit fields");
+    const exercises=Object.fromEntries(Object.entries(groups).map(([key,group])=>{
+      const patch=value.groups[key] ?? {},allowed=properties[key]?.properties ?? {};
+      if(!patch || Array.isArray(patch) || Object.keys(patch).length!==Object.keys(allowed).length || Object.keys(patch).some(field=>!Object.hasOwn(allowed,field)))throw new Error("The formatter changed a source field instead of filling an omission");
+      return [key,Object.fromEntries(Object.entries(group.properties).map(([field,schema])=>{
+        const fixed=fixedSchemaValue(schema);
+        return [field,fixed.fixed?structuredClone(fixed.value):patch[field]];
+      }))];
+    }));
+    return {day:{number:planned.number,title:planned.title,warmup:"",exercises}};
+  }};
+}
+
 function checkOutline(value, number, days, constraints, catalog, trainingConstraints) {
   if (!value?.title?.trim() || !value.progression?.trim() || !value.regression?.trim() || !value.assumptions?.length
     || value.week?.number !== number || value.week.days?.length !== days) throw new Error("The week outline is incomplete");
@@ -470,15 +505,17 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
       signal.throwIfAborted();
       let accepted, repair = "", invalidOutput = "";
       for (let attempt = 0; attempt < 3; attempt++) {
-        const instruction = `Write ONLY week ${number}, day ${planned.number}. The schema fixes the exact working exercise names and order. Main squat,bench,deadlift groups use one integer reps value, exact sets and one scalar RPE; accessories may use dose ranges/holds. ${loadAndSideGuidance} Preserve explicit source-week values unless the brief changes them. If this day has technique bench, its groups combined must meet the coach's cap; put the fatigue alternative in notes, not additional sets. Unspecified rest above RPE7.5:300 seconds with a4–6min suggestion; otherwise propose rest in minutes converted to integer seconds. restIsExplicit is true only for rest supplied by the coach/source week. Keep strings concise; notes may be empty.\nDAY OUTLINE:\n${JSON.stringify(planned)}`;
-        const content = buildProgramPrompt({ system, instruction, evidence: evidenceFor(planned.number), number,
+        const format=dayOutputSchema(number,planned,sourceWeek?.days.find(day=>day.number===planned.number),program.markdownPrescription,
+          program.writtenPrescription?.topologyComplete ? program.writtenPrescription.days.find(day=>day.number===planned.number) : undefined);
+        const patch=program.writtenPrescription?.topologyComplete ? writtenDayPatch(format) : null;
+        const instruction = `Write ONLY week ${number}, day ${planned.number}. ${patch ? "Return only the missing targets in the schema's named groups. The server restores all written fields and full source cues; do not output them or rewrite the day." : "The schema fixes the exact working exercise names and order."} Main squat,bench,deadlift groups use one integer reps value, exact sets and one scalar RPE; accessories may use dose ranges/holds. ${loadAndSideGuidance} Preserve explicit source-week values unless the brief changes them. If this day has technique bench, its groups combined must meet the coach's cap; put the fatigue alternative in notes, not additional sets. Unspecified rest above RPE7.5:300 seconds with a4–6min suggestion; otherwise propose rest in minutes converted to integer seconds. restIsExplicit is true only for rest supplied by the coach/source week. Keep strings concise; notes may be empty.\nDAY OUTLINE:\n${JSON.stringify(planned)}`;
+        const content = patch?.empty ? "" : buildProgramPrompt({ system, instruction, evidence: evidenceFor(planned.number), number,
           continuity: dayContinuity(weeks.at(-1) ?? program.previousWeek, planned.number), repair, invalidOutput, references, query: program.brief });
-        const result = await chat({ messages: [{ role: "system", content: system }, { role: "user", content }],
-          format: dayOutputSchema(number, planned, sourceWeek?.days.find((day) => day.number === planned.number), program.markdownPrescription,
-            program.writtenPrescription?.topologyComplete ? program.writtenPrescription.days.find(day => day.number === planned.number) : undefined), signal });
+        const result = patch?.empty ? {done:true,message:{content:'{"groups":{}}'}} : await chat({ messages: [{ role: "system", content: system }, { role: "user", content }],format:patch?.format ?? format,signal });
         try {
           if (result.done !== true || result.done_reason === "length") throw new Error("The model stopped before completing this day");
-          const value = JSON.parse(result.message?.content);
+          const parsed = JSON.parse(result.message?.content);
+          const value = patch ? patch.restore(parsed,planned) : parsed;
           groundDraftNarrative({ ...outline, week: { ...outline.week, days: [value.day] } }, program);
           const groups = value.day?.exercises;
           if (!groups || Array.isArray(groups) || Object.keys(groups).length !== planned.exercises.length) throw new Error("The day is missing a prescribed exercise group");

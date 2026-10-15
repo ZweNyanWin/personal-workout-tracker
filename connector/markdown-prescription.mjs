@@ -119,7 +119,7 @@ export function markdownHeaderProblems(value, header) {
  * the table's numerical targets. Ambiguous/missing canonical identities fail
  * clearly; this bounded parser is not a general document importer. */
 export function extractMarkdownPrescription(brief, catalog = []) {
-  if (typeof brief !== "string" || brief.length > PROGRAM_BRIEF_LIMIT) throw new Error("The pasted program must be at most 16,000 characters.");
+  if (typeof brief !== "string" || brief.length > PROGRAM_BRIEF_LIMIT) throw new Error("The pasted program must be at most 64,000 characters.");
   const parsed = tables(brief), prescriptions = [], days = [], issues = [];
   const sourceGuidance = explicitGuidance(brief);
   const effort = /\beffort\s*:\s*RPE\s*(\d+(?:\.\d+)?)(?:\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?))?/i.exec(clean(brief));

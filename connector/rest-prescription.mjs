@@ -169,7 +169,7 @@ function prescriptions(brief, week) {
  * can apply their chosen high-RPE default. Conflicting equally specific written
  * prescriptions fail instead of trusting a model provenance flag or guessing. */
 export function resolveBriefRestPrescriptions(brief, week) {
-  if (typeof brief !== "string" || brief.length > PROGRAM_BRIEF_LIMIT) throw new Error("The rest brief must be at most 16,000 characters.");
+  if (typeof brief !== "string" || brief.length > PROGRAM_BRIEF_LIMIT) throw new Error("The rest brief must be at most 64,000 characters.");
   const rules = prescriptions(brief, week);
   const result = [];
   for (const day of week.days ?? []) for (const [exerciseIndex, exercise] of (day.exercises ?? []).entries()) {

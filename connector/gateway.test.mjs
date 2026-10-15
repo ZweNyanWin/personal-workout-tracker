@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import test from "node:test";
 import { createGateway } from "./gateway.mjs";
-import { syntheticWrittenProgram, syntheticCatalog } from "./fixtures/written-program.mjs";
+import { detailedSyntheticWrittenProgram, syntheticCatalog } from "./fixtures/written-program.mjs";
 import { PROGRAM_BRIEF_LIMIT } from "../lib/coach/program-input.mjs";
 
 const TOKEN = "test-only-random-looking-token-with-at-least-43-characters";
@@ -15,7 +15,7 @@ const result = (answer = "An experimental answer.", extra = {}) =>
 
 test("the authenticated bridge imports a full long twelve-week document and keeps chat limits separate", async t => {
   const {start,poll,call,calls}=await setup(t);
-  const brief=syntheticWrittenProgram(); assert.ok(brief.length>6000);
+  const brief=detailedSyntheticWrittenProgram(); assert.ok(brief.length>32000);
   const program={brief,scope:{startWeek:1,weekCount:12,daysPerWeek:4},exerciseCatalog:syntheticCatalog};
   const started=await start({userId:USER,messages:[{role:"user",content:"Format the supplied coach program."}],program});
   assert.equal(started.status,202);const completed=await terminal(poll,started.body.jobId);assert.equal(completed.body.status,"completed");
