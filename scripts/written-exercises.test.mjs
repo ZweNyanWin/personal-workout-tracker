@@ -21,3 +21,10 @@ test("top-single and backdown labels remain group roles instead of new exercise 
  assert.deepEqual(result.map(x=>x.name),["Bench Press"]);
  assert.equal(result[0].id,existing[0].id);
 });
+test("an explicit later bodyweight counterpart is allowed without adding unsolicited exercise variants",()=>{
+ const start="WEEK 1\nDay 1\n1. Weighted Chin-up: 2x6 @ +11 kg\nWEEK 2\n* Upper B: Chin-up: 2x8 bodyweight";
+ const result=catalogWithWrittenExercises([],start);validateExerciseCatalog(result);
+ assert.deepEqual(result.map(item=>item.name),["Weighted Chin-up","Chin-up"]);
+ assert.deepEqual(catalogWithWrittenExercises([],start.replace("bodyweight","+13 kg")).map(item=>item.name),["Weighted Chin-up"]);
+ assert.deepEqual(catalogWithWrittenExercises([],start,"I cannot do chin-ups.").map(item=>item.name),[]);
+});

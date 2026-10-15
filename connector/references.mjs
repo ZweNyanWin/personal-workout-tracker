@@ -10,6 +10,16 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const clean = (value) => typeof value === "string" && value.trim() && value.length <= 32000;
 const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/** Formatting a supplied program needs a template only when the coach names
+ * it. Generic exercise words must not add an unrelated reference program. */
+export function explicitlyNamedReferences(library, query) {
+  const text = ` ${normalize(query ?? "")} `;
+  return library.filter(source => [source.title, ...source.aliases].some(alias => {
+    const name = normalize(alias);
+    return (name.length > 6 || ["kk", "70s"].includes(name)) && text.includes(` ${name} `);
+  }));
+}
+
 /** Only reviewed local corpora are accepted. Browser requests cannot supply paths. */
 export function validateReferenceCorpus(value) {
   if (value?.version !== 1 || !Array.isArray(value.sources) || value.sources.length > 16) throw new Error("Invalid reviewed reference corpus");

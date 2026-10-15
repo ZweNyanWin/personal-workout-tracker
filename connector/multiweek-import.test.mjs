@@ -54,7 +54,7 @@ test("reformatting a saved draft uses the complete pasted source rather than reg
   assert.equal(previous[0].days[0].exercises[0].loadOrAssistance,"999 kg","Recovery content stays untouched");
 });
 
-test("all twelve partially specified weeks use bounded week/day calls and preserve every written target",async()=>{
+test("all twelve partially specified weeks batch missing effort and preserve every written target",async()=>{
   const brief=syntheticWrittenProgram().replaceAll(/, RPE \d/g,"");
   const context="Synthetic client records. ".repeat(450)+" END CLIENT RULE";
   const system="Use supplied facts; missing effort may only be proposed for coach review. ".repeat(42);
@@ -68,6 +68,12 @@ test("all twelve partially specified weeks use bounded week/day calls and preser
   let calls=0;
   const draft=await generateProgram({program:{brief,scope:{startWeek:1,weekCount:12,daysPerWeek:4},exerciseCatalog:catalog},context,system,signal:new AbortController().signal,chat:async({messages,format})=>{
     calls++;const prompt=messages[1].content;assert.ok(Buffer.byteLength(system+prompt)<=PROGRAM_PROMPT_BYTES);assert.ok(prompt.includes(context));
+    if(format.properties.days){
+      const n=Number(/missing targets for week (\d+)/.exec(prompt)[1]);
+      assert.ok(prompt.includes(sources.weeks[n-1].text),"Current raw week is complete");
+      const days=Object.fromEntries(Object.entries(format.properties.days.properties).map(([key,schema])=>[key,{groups:Object.fromEntries(Object.keys(schema.properties.groups.properties).map(group=>[group,{effort:"RPE 7"}]))}]));
+      return {done:true,done_reason:"stop",message:{content:JSON.stringify({days})}};
+    }
     if(format.properties.week){
       const n=format.properties.week.properties.number.const;
       assert.ok(prompt.includes(sources.weeks[n-1].text),"Current raw week is complete");
@@ -85,7 +91,7 @@ test("all twelve partially specified weeks use bounded week/day calls and preser
     }));
     return {done:true,done_reason:"stop",message:{content:JSON.stringify({groups:day.exercises})}};
   }});
-  assert.equal(calls,48);assert.equal(draft.weeks.length,12);
+  assert.equal(calls,12,"One bounded omission call per week replaces 48 day calls");assert.equal(draft.weeks.length,12);
   for(const week of draft.weeks)for(const day of week.days){const source=expected.get(week.number).find(x=>x.number===day.number);assert.deepEqual(day.exercises.map(x=>[x.name,x.sets,x.dose,x.loadOrAssistance,x.notes]),source.exercises.map(x=>[x.name,x.sets,x.dose,x.loadOrAssistance,x.notes]));}
 });
 

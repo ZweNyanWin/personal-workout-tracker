@@ -139,6 +139,8 @@ export function writtenPrescriptionProblems(week, contract) {
         if (source[field] !== null && source[field] !== undefined && !isDeepStrictEqual(source[field], next?.[field])) issues.push(`Day ${day.number}, group ${index + 1} changed its written ${field}.`);
       }
       if(source.attempts && (next?.sets<source.attempts.min || next?.sets>source.attempts.max))issues.push(`Day ${day.number}, group ${index+1} changed the source skill attempt count.`);
+      if(source.setsBounds && (next?.sets<source.setsBounds.min || next?.sets>source.setsBounds.max))issues.push(`Day ${day.number}, group ${index+1} changed the source set-count bounds.`);
+      if(source.effortCeiling && (mainRpeValue(next?.effort)===null || mainRpeValue(next.effort)>source.effortCeiling))issues.push(`Day ${day.number}, group ${index+1} exceeded the source effort ceiling.`);
       if (!String(next?.notes ?? "").includes(source.notes)) issues.push(`Day ${day.number}, group ${index + 1} dropped its complete coach source cue.`);
     }
   }
