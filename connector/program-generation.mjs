@@ -9,6 +9,8 @@ import { extractTrainingConstraints, filterTrainingCatalog, trainingConstraintCo
 import { extractMarkdownPrescription, markdownPrescriptionContext, markdownPrescriptionProblems, markdownScopeProblems, sourcePrescriptionForDay, groundedMarkdownHeader, markdownHeaderProblems, markdownNotes, markdownWarmup } from "./markdown-prescription.mjs";
 import { extractWrittenPrescription, groundDraftNarrative, writtenPrescriptionProblems } from "./written-prescription.mjs";
 import { programBriefForWeek, writtenProgramWeeks } from "../lib/coach/program-input.mjs";
+import { extractCompactPrescription } from "./compact-prescription.mjs";
+import { explicitlyNamedReferences } from "./references.mjs";
 // Fixed schema and limits: the browser cannot choose a provider, model, or format.
 const text = { type: "string", minLength: 1, maxLength: 400 };
 const loadAndSideGuidance = "Apply the external working-load rule ONLY to barbell main lifts (squat, bench press, deadlift and overhead press): if their working weight is unknown, say 'Choose an external load for the prescribed RPE'; never use bodyweight or an exercise-role label for these barbell groups. For other movements use their actual loading: bodyweight for ordinary push-ups and planks unless the coach supplies added load or assistance, and exact written loads and equipment such as a 5 kg goblet squat. Do not replace bodyweight or a supplied kg load with a generic external-load instruction. A movement named Band, Dumbbell, Kettlebell, Cable, Barbell, Smith or Weighted must describe that equipment or added load in loadOrAssistance; plain bodyweight or 'bodyweight load' contradicts the named movement. Equipment written only in notes does not fix a contradictory loadOrAssistance field. For a Dumbbell Farmer's Carry, put the coach's actual dumbbell weight in loadOrAssistance; when not supplied, use 'Dumbbells; working weight not supplied', never invent a weight. Unknown band resistance can be 'Resistance band; tension not supplied', without inventing its strength. Repetition dose.perSide is false for bilateral movements, ordinary push-ups and goblet squats; it is true only for an actual unilateral movement or an explicit per-side coach prescription. Easy recovery activities may use qualitative effort such as 'Easy, comfortable effort'; do not force working-set RPE or RIR onto easy walking or mobility. Main barbell lifts still require their scalar RPE.";
@@ -46,8 +48,14 @@ function applyHighEffortRestSuggestion(week, program, number) {
     // A model provenance flag cannot establish what the coach actually wrote.
     delete item.restIsExplicit;
     const prescription = written.find((entry) => entry.dayNumber === day.number && entry.exerciseIndex === exerciseIndex);
+    const sourcePrescription = program.writtenPrescription?.days.find(source => source.number === day.number)?.exercises[exerciseIndex];
     const rpe = /\bRPE\s*(\d+(?:\.\d+)?)(?:\s*[-–]\s*(\d+(?:\.\d+)?))?/i.exec(item.effort);
     const highEffort = rpe && Math.max(Number(rpe[1]), Number(rpe[2] ?? rpe[1])) > 7.5;
+    if (sourcePrescription?.restIsExplicit && Number.isInteger(sourcePrescription.restSeconds)) {
+      item.restSeconds = sourcePrescription.restSeconds;
+      delete item.restRangeMinutes;
+      continue;
+    }
     if (prescription?.restSeconds !== undefined) {
       applyExplicitRestPrescription(item, prescription, Boolean(highEffort));
       continue;
@@ -112,7 +120,10 @@ export async function generateProgram({ program, context = "", system, chat, sig
   program = { ...program, scope: resolved.scope, ...(resolved.changed ? { sourceWeeks: undefined } : {}) };
   const source = writtenProgramWeeks(program.brief);
   if (!source) return generateBlock({ program, context, system, chat, signal, progress, references });
+  references = explicitlyNamedReferences(references, program.brief);
   const trainingConstraints = extractTrainingConstraints(program.brief, program.trainingContext ?? "");
+  const referencePrescription=extractWrittenPrescription(source.preamble+source.weeks[0].text,
+    {...program.scope,startWeek:source.weeks[0].number,weekCount:1},program.exerciseCatalog??[]);
   const weeks = [], missing = [];
   let header;
   for (let offset = 0; offset < program.scope.weekCount; offset++) {
@@ -129,7 +140,7 @@ export async function generateProgram({ program, context = "", system, chat, sig
     const glossary = !current ? `\nEARLIER WRITTEN PROGRAM (source data; the current requested week is not supplied):\n${program.brief}\n`
       : brief !== program.brief && first.number !== number
       ? `\nEARLIER WRITTEN WEEK (reference for names/abbreviations only; current-week values take priority, missing values remain unknown):\n${first.text}\n` : "";
-    const result = await generateBlock({ program: { ...program, brief, referenceText: glossary, trainingConstraints, previousWeek: weeks.at(-1),
+    const result = await generateBlock({ program: { ...program, brief, referenceText: glossary, referencePrescription, trainingConstraints, previousWeek: weeks.at(-1),
       scope: { ...program.scope, startWeek: number, weekCount: 1 },
       // The pasted document is the source of truth, including on a retry of a
       // saved draft. Old generated content is recovery data, not a second set
@@ -159,8 +170,13 @@ async function generateBlock({ program, context = "", system, chat, signal, prog
   if (pastedIssues.length) throw new Error(`Tommy needs clarification before preserving this pasted program. ${pastedIssues.join(" ")} Your saved draft and current program are kept.`);
   if (markdownPrescription) markdownPrescription.header = groundedMarkdownHeader(markdownPrescription, program.scope);
   program = { ...program, exerciseCatalog: catalog, trainingConstraints, markdownPrescription };
-  const written = !program.sourceWeeks?.length && !markdownPrescription && !writtenProgramWeeks(program.brief)
+  let written = !program.sourceWeeks?.length && !markdownPrescription && !writtenProgramWeeks(program.brief)
     ? extractWrittenPrescription(program.brief, program.scope, catalog) : null;
+  if(!written?.complete && !written?.topologyComplete && !markdownPrescription && !writtenProgramWeeks(program.brief)) {
+    const compact=extractCompactPrescription(program.brief,program.scope,catalog,program.referencePrescription);
+    if(compact?.issues.length)throw new Error(`Tommy needs clarification before formatting this written week. ${compact.issues.join(" ")} Your saved draft and current program are kept.`);
+    written=compact??written;
+  }
   if (written?.complete) {
     signal.throwIfAborted();
     const value = groundDraftNarrative({ title: `Week ${program.scope.startWeek} · coach prescription`, assumptions: [], progression: "", regression: "",
@@ -381,6 +397,8 @@ export function dayOutputSchema(weekNumber, day, sourceDay, markdownPrescription
             : { kind: { const: "hold" }, seconds: fixed } };
       }
       if (supplied.attempts) schema.properties.sets = { type: "integer", minimum: supplied.attempts.min, maximum: supplied.attempts.max };
+      if (supplied.setsBounds) schema.properties.sets = { type: "integer", minimum: supplied.setsBounds.min, maximum: supplied.setsBounds.max };
+      if(supplied.effortCeiling && !supplied.effort) schema.properties.effort={enum:Array.from({length:11},(_,n)=>5+n/2).filter(value=>value<=supplied.effortCeiling).map(value=>`RPE ${value}`)};
     }
     return [`group${index + 1}`, schema];
   });
@@ -422,6 +440,25 @@ export function writtenDayPatch(fullSchema) {
     }));
     return {day:{number:planned.number,title:planned.title,warmup:"",exercises}};
   }};
+}
+
+/** Batch small source omissions, never whole generated days. Source fields are
+ * restored locally; a rejected batch falls back to the existing day repairs. */
+export function writtenWeekPatch(number, plannedDays, contract) {
+  const patches = plannedDays.map(planned => ({ planned,
+    patch: writtenDayPatch(dayOutputSchema(number, planned, undefined, undefined,
+      contract.days.find(day => day.number === planned.number))) }));
+  const pending = patches.filter(({ patch }) => !patch.empty);
+  const properties = Object.fromEntries(pending.map(({ planned, patch }) => [`day${planned.number}`, patch.format]));
+  const format = { type: "object", additionalProperties: false, required: ["days"], properties: {
+    days: { type: "object", additionalProperties: false, required: Object.keys(properties), properties } } };
+  return { format, pending: pending.length, restore(value) {
+    if (!value || Object.keys(value).length !== 1 || !value.days || Array.isArray(value.days)
+      || Object.keys(value.days).length !== pending.length
+      || Object.keys(value.days).some(key => !Object.hasOwn(properties, key))) throw new Error("The formatter returned unexpected week-edit fields");
+    return new Map(patches.map(({ planned, patch }) => [planned.number,
+      patch.restore(patch.empty ? { groups: {} } : value.days[`day${planned.number}`], planned)]));
+  } };
 }
 
 function checkOutline(value, number, days, constraints, catalog, trainingConstraints) {
@@ -503,6 +540,27 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
       } catch (error) { outline = undefined; lastProblem = problem(error); repair = `\nREPAIR: ${lastProblem}. Correct the exercise order and names; return the whole outline. Previous outline is draft data.`; invalidOutput = String(result.message?.content ?? ""); }
     }
     if (!outline) throw new Error(`Tommy could not produce a complete week ${number} after three attempts. ${lastProblem}. Your saved draft and current program are kept.`);
+    let batchedDays;
+    if (program.writtenPrescription?.topologyComplete) {
+      const batch = writtenWeekPatch(number, outline.week.days, program.writtenPrescription);
+      // Full original cues are already in the uncut coach brief. Avoid a
+      // second copy per group while retaining the resolved identities, numbers
+      // and proposal bounds needed to fill omissions.
+      const targets = { days: program.writtenPrescription.days.map(day => ({ ...day,
+        exercises: day.exercises.map(source => { const item = { ...source }; delete item.notes; return item; }) })) };
+      const evidence = `${evidenceFor()}\nCURRENT-WEEK SOURCE TARGETS (complete source cues are in the coach brief; fill only null/unspecified targets and keep the stated bounds):\n${JSON.stringify(targets)}`;
+      // Leave prompt/schema headroom and the ordinary day path for large source
+      // cues. No coach rule is trimmed to make the fast path fit.
+      if (batch.pending > 1 && Buffer.byteLength(system + evidence) < 26000 && Buffer.byteLength(JSON.stringify(batch.format)) < 16000) {
+        const content = buildProgramPrompt({ system, number, evidence,
+          instruction: `Fill ONLY the missing targets for week ${number} in the schema's named days and groups. Every supplied field is restored by the server; do not rewrite it. Use exact scalar RPE for main lifts and the source's numeric bounds. Unknown loads are qualitative, never invented kg. Proposed rest above RPE 7.5 is 300 seconds; otherwise choose rest in minutes converted to integer seconds. ${loadAndSideGuidance}`,
+          references, query: program.brief });
+        const result = await chat({ messages: [{ role: "system", content: system }, { role: "user", content }], format: batch.format, signal });
+        if (result.done === true && result.done_reason !== "length") {
+          try { batchedDays = batch.restore(JSON.parse(result.message?.content)); } catch { /* Bounded day repair retains every source field. */ }
+        }
+      }
+    }
     const days = [];
     for (const planned of [...outline.week.days].sort((a, b) => a.number - b.number)) {
       signal.throwIfAborted();
@@ -512,13 +570,15 @@ async function generateFocusedProgram({ program, context, system, chat, signal, 
           program.writtenPrescription?.topologyComplete ? program.writtenPrescription.days.find(day=>day.number===planned.number) : undefined);
         const patch=program.writtenPrescription?.topologyComplete ? writtenDayPatch(format) : null;
         const instruction = `Write ONLY week ${number}, day ${planned.number}. ${patch ? "Return only the missing targets in the schema's named groups. The server restores all written fields and full source cues; do not output them or rewrite the day." : "The schema fixes the exact working exercise names and order."} Main squat,bench,deadlift groups use one integer reps value, exact sets and one scalar RPE; accessories may use dose ranges/holds. ${loadAndSideGuidance} Preserve explicit source-week values unless the brief changes them. If this day has technique bench, its groups combined must meet the coach's cap; put the fatigue alternative in notes, not additional sets. Unspecified rest above RPE7.5:300 seconds with a4–6min suggestion; otherwise propose rest in minutes converted to integer seconds. restIsExplicit is true only for rest supplied by the coach/source week. Keep strings concise; notes may be empty.\nDAY OUTLINE:\n${JSON.stringify(planned)}`;
-        const content = patch?.empty ? "" : buildProgramPrompt({ system, instruction, evidence: evidenceFor(planned.number), number,
+        const batched = attempt === 0 ? batchedDays?.get(planned.number) : undefined;
+        const content = patch?.empty || batched ? "" : buildProgramPrompt({ system, instruction, evidence: evidenceFor(planned.number), number,
           continuity: dayContinuity(weeks.at(-1) ?? program.previousWeek, planned.number), repair, invalidOutput, references, query: program.brief });
-        const result = patch?.empty ? {done:true,message:{content:'{"groups":{}}'}} : await chat({ messages: [{ role: "system", content: system }, { role: "user", content }],format:patch?.format ?? format,signal });
+        const result = batched ? { done: true, message: { content: JSON.stringify(batched) } }
+          : patch?.empty ? {done:true,message:{content:'{"groups":{}}'}} : await chat({ messages: [{ role: "system", content: system }, { role: "user", content }],format:patch?.format ?? format,signal });
         try {
           if (result.done !== true || result.done_reason === "length") throw new Error("The model stopped before completing this day");
           const parsed = JSON.parse(result.message?.content);
-          const value = patch ? patch.restore(parsed,planned) : parsed;
+          const value = batched ? parsed : patch ? patch.restore(parsed,planned) : parsed;
           groundDraftNarrative({ ...outline, week: { ...outline.week, days: [value.day] } }, program);
           const groups = value.day?.exercises;
           if (!groups || Array.isArray(groups) || Object.keys(groups).length !== planned.exercises.length) throw new Error("The day is missing a prescribed exercise group");
