@@ -5,6 +5,10 @@ const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const boundaries = /\b(?:This is an? |No additional working|No automatic progression|Keep status proposed|Keep warmups separate|Keep warm-ups separate|Regress only|Day\s*#?\s*\d+\b)/i;
 const n = "(\\d+(?:\\.\\d+)?)";
 
+export function hasNegativeWrittenReserve(text) {
+  return /(?:^|[\s(:])[-−–]\s*\d+(?:\.\d+)?(?:\s*(?:[-–—]|to)\s*[-−–]?\s*\d+(?:\.\d+)?)?\s*RIR\b|\b\d+(?:\.\d+)?\s*(?:[-–—]|to)\s*[-−–]\s*\d+(?:\.\d+)?\s*RIR\b|\bRIR\s*[:=]?\s*[-−–]\s*\d/i.test(text);
+}
+
 /** A deliberately bounded import grammar, not an interpretation of free-form
  * programming. Only catalog identities immediately followed by a numerical
  * dose are source prescriptions. Ambiguous/missing fields keep the model path
@@ -54,6 +58,7 @@ export function extractWrittenPrescription(brief, scope, catalog = []) {
     const boundary = boundaries.exec(source.slice(hit.doseEnd - hit.index));
     if (boundary) source = source.slice(0, hit.doseEnd - hit.index + boundary.index).trim();
     const body = source.slice(hit.end - hit.index);
+    if(hasNegativeWrittenReserve(body))issues.push("A negative written reserve target needs clarification; no sign was removed.");
     const seconds = (hit.writtenHold || /^\s*(?:sec(?:ond)?s?|s)\b/i.test(brief.slice(hit.doseEnd))) && !isMainCompound(hit.entry.name);
     const sets = Number(hit.dose[1]), min = Number(hit.dose[2]), max = Number(hit.dose[3] ?? hit.dose[2]);
     const rpe = new RegExp(`\\bRPE\\s*[:=]?\\s*${n}(?:\\s*(?:[-–]|to)\\s*${n})?`, "i").exec(body);
@@ -72,8 +77,10 @@ export function extractWrittenPrescription(brief, scope, catalog = []) {
     const load = unknown ? `${hit.entry.equipment ?? "External load"}; working weight not supplied`
       : mass ? `${one ? "One " : ""}${mass[1]} ${/^k/i.test(mass[2]) ? "kg" : "lb"}${dumbbell ? " dumbbell" : ""}${eachHand ? " per hand" : ""}`
       : bodyweight ? "Bodyweight" : null;
-    const effort = rpe ? `RPE ${rpe[1]}${rpe[2] ? `–${rpe[2]}` : ""}`
-      : /\b(?:(?:stop|end)\s+before\s+(?:position|form)\s+loss|easy|comfortable)\b/i.exec(body)?.[0];
+    const accessoryReserve = !isMainCompound(hit.entry.name) ? /\b(?:last\s+set\s+)?\d+(?:\.\d+)?(?:\s*(?:[-–]|to)\s*\d+(?:\.\d+)?)?\s*RIR\b|\b(?:last\s+set\s+)?RIR\s*[:=]?\s*\d+(?:\.\d+)?(?:\s*(?:[-–]|to)\s*\d+(?:\.\d+)?)?/i.exec(body)?.[0]?.replace(/\s+to\s+/i,"–") : null;
+    const accessoryFailure = !isMainCompound(hit.entry.name) ? /\blast\s+set\s+(?:to\s+)?failure\b/i.exec(body)?.[0] : null;
+    const explicitEffort = [rpe ? `RPE ${rpe[1]}${rpe[2] ? `–${rpe[2]}` : ""}` : null, accessoryReserve, accessoryFailure].filter(Boolean).join("; ");
+    const effort = explicitEffort || /\b(?:(?:stop|end)\s+before\s+(?:position|form)\s+loss|easy|comfortable)\b/i.exec(body)?.[0];
     const item = { name: hit.entry.name, sets, dose: seconds ? { kind: "hold", seconds: { min, max } }
       : { kind: "reps", range: { min, max }, perSide: /\b(?:per|each)\s+(?:side|leg|arm)\b/i.test(body) },
       loadOrAssistance: load ?? inheritedDumbbell, effort, restSeconds: restMin !== null ? Math.round((restMin + restMax) / 2) : null,

@@ -149,3 +149,10 @@ test("source notes end before the following row's number",()=>{
   assert.equal(c.days[0].exercises[0].notes,"Coach source: Bench Press: 1x1 @ 77 kg RPE 7 rest 2 min.");
   assert.equal(c.days[0].exercises[1].notes,"Coach source: Bench Press: 2x4 @ 65 kg RPE 7 rest 2 min.");
 });
+
+test("numbered accessory last-set reserves and failure cues remain supplied effort rather than omissions",()=>{
+  const c=extractWrittenPrescription("Day 1\n1. Dumbbell Row: 2x8 @ 11 kg (last set 0–1 RIR), rest 2 min.\n2. Dumbbell Row: 2x10 @ 9 kg (last set failure), rest 2 min.",{...scope,daysPerWeek:1},catalog);
+  assert.equal(c.complete,true);assert.deepEqual(c.days[0].exercises.map(item=>item.effort),["last set 0–1 RIR","last set failure"]);
+  const schema=dayOutputSchema(6,c.days[0],undefined,undefined,c.days[0]);
+  assert.equal(schema.properties.day.properties.exercises.properties.group1.properties.effort.const,"last set 0–1 RIR");
+});

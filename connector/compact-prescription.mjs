@@ -1,4 +1,4 @@
-import { extractWrittenPrescription } from "./written-prescription.mjs";
+import { extractWrittenPrescription, hasNegativeWrittenReserve } from "./written-prescription.mjs";
 import { isMainCompound, expectedDoseKind, mainRpeValue } from "../lib/coach/exercise-rules.mjs";
 
 const normalized = text => String(text).normalize("NFKC").toLowerCase()
@@ -8,6 +8,13 @@ const words = text => normalized(text).split(" ").filter(Boolean);
 const withoutRole = text => text.replace(/\s+(?:(?:top|working)\s+)?(?:single|backdowns?|back[- ]?off|top\s+set)\s*$/i,"").trim();
 const unique = list => [...new Map(list.map(item=>[normalized(item.name),item])).values()];
 const subset = (query,name) => words(query).every(word=>words(name).some(part=>part===word || word.length>=3 && part.length>=3 && (part.startsWith(word)||word.startsWith(part))));
+const rirTarget = target => /\b(?:last\s+set\s+)?\d+(?:\.\d+)?(?:\s*(?:[-–—]|to)\s*\d+(?:\.\d+)?)?\s*RIR\b|\b(?:last\s+set\s+)?RIR\s*[:=]?\s*\d+(?:\.\d+)?(?:\s*(?:[-–—]|to)\s*\d+(?:\.\d+)?)?/i.exec(target)?.[0]?.replace(/\s+(?:to)\s+|\s*—\s*/i,"–");
+function permitsFailure(target) {
+  const rir=rirTarget(target), reserves=rir?.match(/\d+(?:\.\d+)?/g)?.map(Number)??[];
+  const rpe=/\bRPE\s*(\d+(?:\.\d+)?)(?:\s*(?:[-–—]|to)\s*(\d+(?:\.\d+)?))?/i.exec(target);
+  return /\bfailure\b/i.test(target.replace(/\bno\s+failure\b/gi,"")) || reserves.some(value=>value===0)
+    || Boolean(rpe && Math.max(Number(rpe[1]),Number(rpe[2]??rpe[1]))>=10);
+}
 
 /** Parse only bounded, coach-written shorthand whose day and exercise identity
  * can be grounded in an earlier explicit source week. No model-generated
@@ -78,7 +85,10 @@ export function extractCompactPrescription(brief,scope,catalog,reference) {
       return null;
     };
     for(const segment of record.segments) {
-      if(/^all\s+accessories\b/i.test(segment)){dayRules.push(segment);continue;}
+      if(/^all\s+accessories\b/i.test(segment)){
+        if(hasNegativeWrittenReserve(segment))issues.push("A negative written reserve target needs clarification; no sign was removed.");
+        dayRules.push(segment);continue;
+      }
       let query,target,names;
       const colon=segment.indexOf(":");
       if(colon>=0){query=segment.slice(0,colon).trim();target=segment.slice(colon+1).trim();}
@@ -90,11 +100,12 @@ export function extractCompactPrescription(brief,scope,catalog,reference) {
       }
       if(/^accessories$/i.test(query))names=unique(ref.exercises.filter(item=>!isMainCompound(item.name)&&!exercises.some(done=>done.name===item.name))).map(item=>item.name);
       else if(/^skills?$/i.test(query))names=unique(ref.exercises.filter(item=>expectedDoseKind(item.name)==="hold"&&!exercises.some(done=>done.name===item.name))).map(item=>item.name);
-      else if(/^backdowns?|back[- ]?off$/i.test(query))names=[exercises.filter(item=>isMainCompound(item.name)).at(-1)?.name ?? ref.exercises.find(item=>isMainCompound(item.name))?.name].filter(Boolean);
+      else if(/^(?:backdowns?|back[- ]?off)$/i.test(query))names=isMainCompound(exercises.at(-1)?.name) ? [exercises.at(-1).name] : null;
       else names=namesFor(query);
       if(!names?.length){issues.push(`Day ${record.number}: '${query.slice(0,120)}' needs one grounded full saved/source exercise name.`);continue;}
       for(const resolvedName of names) {
-        if(noFailure && /\b(?:failure|0\s*RIR|RIR\s*0|RPE\s*10)\b/i.test(target))issues.push("A written failure target conflicts with the week's no-failure instruction; clarify the source.");
+        if(noFailure && permitsFailure(target))issues.push("A written failure target conflicts with the week's no-failure instruction; clarify the source.");
+        if(hasNegativeWrittenReserve(target))issues.push("A negative written reserve target needs clarification; no sign was removed.");
         let name=resolvedName;
         if(/\b(?:bodyweight|bw)\b/i.test(target)&&!/^weighted\b/i.test(query)&&/^weighted\s+/i.test(name)) {
           const bare=name.replace(/^weighted\s+/i,"");
@@ -102,7 +113,10 @@ export function extractCompactPrescription(brief,scope,catalog,reference) {
           if(!unweighted){issues.push("A written bodyweight variation needs its unweighted source/library identity; no added load was forced.");continue;}
           name=unweighted.name;
         }
-        let canonicalTarget=target,unitProposal=false;
+        let canonicalTarget=target.replace(/\b(\d+)\s+sets?\s+of\s+(\d+(?:\s*[-–]\s*\d+)?)\s+reps?\b/i,"$1x$2")
+          .replace(/\b(\d+)\s+sets?\s+of\s+(\d+(?:\s*[-–]\s*\d+)?)\s*(?:seconds?|secs?)\b/i,"$1 holds of $2 seconds"),unitProposal=false;
+        const massFirst=/^\+?(\d+(?:\.\d+)?)\s*(kg|lb)\s+(\d+\s*[x×]\s*\d+(?:\s*[-–]\s*\d+)?)(.*)$/i.exec(canonicalTarget);
+        if(massFirst)canonicalTarget=`${massFirst[3]} @ ${massFirst[1]} ${massFirst[2]}${massFirst[4]}`;
         // "load x reps" and "load sets x reps" preserve the numeric load.
         // Missing units are visible proposals from that source identity only.
         const loadFirst=/^(\d+(?:\.\d+)?)\s+(\d+\s*[x×]\s*\d+(?:\s*[-–]\s*\d+)?)\s*$/i.exec(target);
@@ -117,17 +131,28 @@ export function extractCompactPrescription(brief,scope,catalog,reference) {
         if(parsed?.issues.length)issues.push(...parsed.issues);
         const item=parsed?.days[0]?.exercises[0] ?? {name,sets:null,dose:null,loadOrAssistance:null,effort:null,restSeconds:null,restIsExplicit:false};
         if(!parsed) {
+          const withoutRest=target.replace(/\brest(?:\s+time)?\s*[:=]?\s*(?:exactly\s+)?\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*(?:min(?:ute)?s?|sec(?:ond)?s?)\b/gi,"");
+          if(/\b\d+(?:\s*[-–]\s*\d+)?\s*(?:reps?|holds?|seconds?|secs?|minutes?|mins?)\b/i.test(withoutRest))issues.push("An explicit rep or hold duration has unsupported wording; clarify it rather than proposing a replacement.");
+          // A missing rep/hold dose does not make an explicitly written load,
+          // effort or rest unknown. Reuse the numeric parser with a temporary
+          // dose solely to read these independent fields; never retain that
+          // temporary dose or mark it as a supplied target.
+          const placeholder=expectedDoseKind(name)==="hold" ? "1 holds of 1 seconds" : "1x1";
+          const fields=extractWrittenPrescription(`Day 1. ${name}: ${placeholder}, ${target}`,{startWeek:scope.startWeek,weekCount:1,daysPerWeek:1},catalog);
+          if(fields?.issues.length)issues.push(...fields.issues);
+          const supplied=fields?.days[0]?.exercises[0];
+          if(supplied)for(const field of ["loadOrAssistance","effort","restSeconds","restIsExplicit","restRangeMinutes"])if(supplied[field]!==undefined)item[field]=supplied[field];
           const sets=/\b(\d+)(?:\s*[-–]\s*(\d+))?\s+(?:(?:easy|light)\s+)?sets?\b/i.exec(target);
           const attempts=/\b(\d+)(?:\s*[-–]\s*(\d+))?\s+attempts?\b/i.exec(target);
           if(sets){if(!sets[2]||sets[1]===sets[2])item.sets=Number(sets[1]);else item.setsBounds={min:Number(sets[1]),max:Number(sets[2])};}
           if(attempts)item.attempts={min:Number(attempts[1]),max:Number(attempts[2]??attempts[1])};
-          const alternatives=/\b(?:bodyweight|bw)\s*\/\s*\+\s*(\d+(?:\.\d+)?)\s*(kg|lb)\b/i.exec(target);
-          if(alternatives)item.loadOrAssistance=`Bodyweight or +${alternatives[1]} ${alternatives[2]} (written alternatives)`;
-          else if(/\b(?:bodyweight|bw)\b/i.test(target))item.loadOrAssistance="Bodyweight";
+          if(/\b(?:bodyweight|bw)\b/i.test(target)&&!item.loadOrAssistance)item.loadOrAssistance="Bodyweight";
         }
-        if(!item.effort && /\b(?:light|easy)\b/i.test(target)&&!isMainCompound(name))item.effort="Easy, comfortable effort";
-        const rir=/\b(\d+(?:\.\d+)?)\s*RIR\b/i.exec(target);
-        if(rir&&!isMainCompound(name))item.effort=`${rir[1]} RIR`;
+        const alternatives=/\b(?:bodyweight|bw)\s*\/\s*\+\s*(\d+(?:\.\d+)?)\s*(kg|lb)\b/i.exec(target);
+        if(alternatives)item.loadOrAssistance=`Bodyweight or +${alternatives[1]} ${alternatives[2]} (written alternatives)`;
+        if(/\b(?:light|easy)\b/i.test(target)&&!isMainCompound(name)&&(!item.effort || /^(?:easy|comfortable)$/i.test(item.effort)))item.effort="Easy, comfortable effort";
+        const rir=rirTarget(target);
+        if(rir&&!isMainCompound(name)&&!item.effort?.includes(rir))item.effort=item.effort ? `${item.effort}; ${rir}` : rir;
         item.notes=`Coach source: ${segment}`;
         if(normalized(withoutRole(query))!==normalized(name)&&!/^accessories|skills|backdown/i.test(query))item.notes+=` Shorthand identity proposed from the earlier written day: ${name}; confirm.`;
         if(unitProposal)item.notes+=" Load unit is proposed from the same earlier source identity where available; confirm the unit.";
@@ -141,14 +166,18 @@ export function extractCompactPrescription(brief,scope,catalog,reference) {
     for(const item of exercises){
       const rules=[...dayRules,...shared];
       if(rules.length)item.notes+=` Week/day instructions: ${rules.join(" ")}`;
-      const accessoryRir=dayRules.map(rule=>/\b(\d+(?:\.\d+)?)\s*RIR\b/i.exec(rule)).find(Boolean);
-      if(accessoryRir&&!isMainCompound(item.name))item.effort=`${accessoryRir[1]} RIR`;
+      const accessoryRir=dayRules.map(rirTarget).find(Boolean);
+      if(accessoryRir&&!isMainCompound(item.name)) {
+        if(item.effort && !/\b(?:RPE|RIR|failure)\b/i.test(item.effort))item.effort+=`; ${accessoryRir}`;
+        else if(item.effort && normalized(item.effort)!==normalized(accessoryRir))issues.push("An explicit accessory effort conflicts with the day-wide reserve instruction; clarify the source.");
+        else item.effort=accessoryRir;
+      }
       if(noFailure&&!item.effort)item.effortCeiling=9.5;
       if(singleCap&&isMainCompound(item.name)&&item.dose?.kind==="reps"&&item.dose.range.min===1&&item.dose.range.max===1)item.effortCeiling=Number(singleCap[2]??singleCap[1]);
       if(item.notes.length>400)issues.push("A shorthand group and its complete source rules exceed the note bound; clarify the source without dropping instructions.");
       for(const bounds of [item.attempts,item.setsBounds])if(bounds&&(bounds.min<1||bounds.max<bounds.min||bounds.max>10))issues.push("The written set or attempt range must be within1–10.");
       if(item.effortCeiling&&mainRpeValue(item.effort)>item.effortCeiling)issues.push("A written RPE conflicts with the week's effort cap; clarify the source.");
-      if(noFailure && /(?:\bfailure\b|\b0\s*RIR\b|\bRIR\s*0\b|\bRPE\s*10\b)/i.test(item.effort??""))issues.push("A written failure target conflicts with the week's no-failure instruction; clarify the source.");
+      if(noFailure && permitsFailure(item.effort??""))issues.push("A written failure target conflicts with the week's no-failure instruction; clarify the source.");
     }
     if(!exercises.length||exercises.length>12)issues.push("Each shorthand day needs1–12 unambiguous working groups.");
     days.push({number:record.number,title:record.title,exercises});

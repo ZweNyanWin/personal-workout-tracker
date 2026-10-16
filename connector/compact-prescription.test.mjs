@@ -145,3 +145,61 @@ test("an accessory clause ending in each before the next WEEK heading never beco
   const draft=await generateProgram({program:{brief:`WEEK 1\n${first}\n${source}\n${source.replace("WEEK 2","WEEK 3")}`,scope:{startWeek:1,weekCount:3,daysPerWeek:4},exerciseCatalog:catalog},system:"rules",signal:new AbortController().signal,chat:async({format})=>{calls++;assert.ok(format.properties.days);return response(filled(format));}});
   assert.equal(calls,2);assert.equal(draft.weeks.length,3);
 });
+
+test("sets-only and attempts-only clauses retain independent written load, effort and rest",()=>{
+  const source=extractCompactPrescription(compact.replace("Lateral/Curl: 2 sets each","Lateral Raise: 2 sets @ 8 kg RPE 8 rest 2 min | Curl: 2 sets each").replace("Handstand + L-Sit","Handstand: 5–7 attempts bodyweight RPE 7 rest 1.5 min | L-Sit"),scope,catalog,reference);
+  assert.deepEqual(source.issues,[]);
+  const lateral=source.days[3].exercises[1], skill=source.days[3].exercises[3];
+  assert.deepEqual([lateral.sets,lateral.dose,lateral.loadOrAssistance,lateral.effort,lateral.restSeconds,lateral.restIsExplicit],[2,null,"8 kg","RPE 8",120,true]);
+  assert.deepEqual([skill.attempts,skill.dose,skill.loadOrAssistance,skill.effort,skill.restSeconds],[{min:5,max:7},null,"Bodyweight","RPE 7",90]);
+});
+
+test("last-set RIR scope and ranges stay literal and a conflicting accessory-wide rule never overwrites them",()=>{
+  const source=extractCompactPrescription(compact.replace("Bulgarian: 2x8–10","Bulgarian: 2x8–10 (last set 1–2 RIR)"),scope,catalog,reference);
+  assert.deepEqual(source.issues,[]);assert.equal(source.days[0].exercises[2].effort,"last set 1–2 RIR");
+  const conflict=extractCompactPrescription(compact.replace("Bulgarian: 2x8–10","Bulgarian: 2x8–10 RPE 8 | all accessories 3 RIR"),scope,catalog,reference);
+  assert.match(conflict.issues.join(" "),/conflicts with the day-wide/);
+  assert.equal(conflict.days[0].exercises[2].effort,"RPE 8");
+});
+
+test("written bodyweight alternatives and sets-of-reps wording are fixed source values",()=>{
+  const source=extractCompactPrescription(compact.replace("Pull-up: 2x8 bodyweight","Pull-up: 2x8 BW/+5 kg").replace("Lateral/Curl: 2 sets each","Lateral Raise: 3 sets of 8 reps @ 4 kg RPE 7 rest 2 min | Curl: 2 sets each"),scope,catalog,reference);
+  assert.deepEqual(source.issues,[]);
+  assert.equal(source.days[1].exercises[1].loadOrAssistance,"Bodyweight or +5 kg (written alternatives)");
+  const lateral=source.days[3].exercises[1];assert.equal(lateral.sets,3);assert.deepEqual(lateral.dose.range,{min:8,max:8});assert.equal(lateral.loadOrAssistance,"4 kg");
+});
+
+test("bare Backdown after a different movement needs clarification instead of jumping to an earlier main lift",()=>{
+  const source=extractCompactPrescription(compact.replace("Squat Single: 95.5 kg | Backdown: 2x3 @ 78 kg","Squat Single: 95.5 kg | Bulgarian: 2x8 @ bodyweight | Backdown: 2x3 @ 78 kg"),scope,catalog,reference);
+  assert.match(source.issues.join(" "),/Backdown.*grounded/);
+});
+
+test("no-failure weeks reject zero reserve anywhere in a scoped range and never remove a negative sign",()=>{
+  for(const reserve of ["last set 0–1 RIR","last set 0 to 1 RIR","RIR 1–0"]){
+    const source=extractCompactPrescription(compact.replace("Bulgarian: 2x8–10",`Bulgarian: 2x8–10 (${reserve})`),scope,catalog,reference);
+    assert.match(source.issues.join(" "),/no-failure/);
+  }
+  const source=extractCompactPrescription(compact.replace("Bulgarian: 2x8–10","Bulgarian: 2x8–10 (last set 1 to 2 RIR)"),scope,catalog,reference);
+  assert.deepEqual(source.issues,[]);assert.equal(source.days[0].exercises[2].effort,"last set 1–2 RIR");
+  assert.match(source.days[0].exercises[2].notes,/last set 1 to 2 RIR/);
+  const negative=extractCompactPrescription(compact.replace("Bulgarian: 2x8–10","Bulgarian: 2x8–10 (-1 RIR)"),scope,catalog,reference);
+  assert.match(negative.issues.join(" "),/negative written reserve/);
+  for(const target of ["Bulgarian: 2x8 (last set -1–2 RIR)","Bulgarian: 2x8 (last set -1 to 2 RIR)","Bulgarian: 2x8 | all accessories -1 RIR"]){
+    assert.match(extractCompactPrescription(compact.replace("Bulgarian: 2x8–10",target),scope,catalog,reference).issues.join(" "),/negative written reserve/);
+  }
+});
+
+test("sets-of-seconds holds retain their exact duration while unsupported numeric dose wording needs clarification",()=>{
+  for(const unit of ["seconds","sec"]){
+    const source=extractCompactPrescription(compact.replace("Handstand + L-Sit",`Handstand | L-Sit: 3 sets of 15 ${unit} bodyweight`),scope,catalog,reference);
+    assert.deepEqual(source.issues,[]);const skill=source.days[3].exercises.at(-1);assert.equal(skill.sets,3);assert.deepEqual(skill.dose,{kind:"hold",seconds:{min:15,max:15}});
+  }
+  const source=extractCompactPrescription(compact.replace("Lateral/Curl: 2 sets each","Lateral Raise: 2 sets, 8 reps @ 4 kg | Curl: 2 sets each"),scope,catalog,reference);
+  assert.match(source.issues.join(" "),/unsupported wording/);
+});
+
+test("decimal load-first notation preserves the following sets, reps and units",()=>{
+  const source=extractCompactPrescription(compact.replace("Pull-up: 2x8 bodyweight","Weighted Pull-up: +17.5 lb 2x5–7"),scope,catalog,reference);
+  assert.deepEqual(source.issues,[]);const item=source.days[1].exercises[1];
+  assert.equal(item.sets,2);assert.deepEqual(item.dose.range,{min:5,max:7});assert.equal(item.loadOrAssistance,"17.5 lb");
+});
