@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { saveCoachingDraft } from "@/lib/actions/coaching";
-import { buildClientContext } from "@/lib/coach/context";
+import { buildClientContext, isWrittenProgramFormattingRequest } from "@/lib/coach/context";
 import { loadCoachExerciseCatalog } from "@/lib/coach/exercise-catalog";
 import { compatibleGenerationSource } from "@/lib/coach/program-source";
 import { resolveRequestedScope } from "@/lib/coach/requested-scope.mjs";
@@ -23,8 +23,9 @@ async function verifiedCoach() {
   const supabase = await createClient({ signal: AbortSignal.timeout(20000) });
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
-  const { data: canCoach, error: accessError } = await supabase.rpc("is_admin");
-  const { data: aiEnabled, error: aiError } = await supabase.rpc("coach_ai_access");
+  const [{ data: canCoach, error: accessError }, { data: aiEnabled, error: aiError }] = await Promise.all([
+    supabase.rpc("is_admin"), supabase.rpc("coach_ai_access"),
+  ]);
   return !accessError && !aiError && canCoach === true && aiEnabled === true ? { supabase, user } : null;
 }
 
@@ -60,12 +61,21 @@ export async function POST(request: Request) {
     if (!saved.success) return coachJson({ error: saved.error || "Could not save this brief." }, 409);
     const draft = saved.data;
     persistedDraft = draft;
-    const [context, profile] = await Promise.all([
-      buildClientContext(memberId, coach.supabase),
-      coach.supabase.from("coaching_profiles").select("training_context").eq("member_id", memberId).maybeSingle(),
-    ]);
-    if (profile.error) throw new Error("Client equipment and movement limitations could not be verified. Retry before drafting.");
-    const trainingContext = profile.data?.training_context ?? "";
+    const formatting = isWrittenProgramFormattingRequest(brief, mode);
+    let context: Awaited<ReturnType<typeof buildClientContext>>;
+    let trainingContext: string;
+    if (formatting) {
+      context = await buildClientContext(memberId, coach.supabase, { purpose: "written-program-formatting" });
+      trainingContext = context.trainingContext ?? "";
+    } else {
+      const [fullContext, profile] = await Promise.all([
+        buildClientContext(memberId, coach.supabase),
+        coach.supabase.from("coaching_profiles").select("training_context").eq("member_id", memberId).maybeSingle(),
+      ]);
+      if (profile.error) throw new Error("Client equipment and movement limitations could not be verified. Retry before drafting.");
+      context = fullContext;
+      trainingContext = profile.data?.training_context ?? "";
+    }
     const exerciseCatalog = await loadCoachExerciseCatalog(coach.supabase, coach.user.id, brief, trainingContext);
     // A coach's explicitly numbered source movement is authored input, not a
     // model invention or an instruction to change another tenant's library.
@@ -73,7 +83,8 @@ export async function POST(request: Request) {
     const sourceWeeks = compatibleGenerationSource(previousContent, brief, trainingContext, exerciseCatalog.entries);
     // The structured catalog is sent separately. Duplicating it here consumed
     // the model budget and could cut off actual client rules or completed logs.
-    const contextText = `${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
+    const contextText = formatting ? context.text
+      : `${mode === "continue" ? "The coach requests the next block based on the current assigned program and completed logs. Do not treat planned targets as achievements.\n" : ""}${context.text}`.slice(0, 12000);
     coachId = coach.user.id;
     // An authorized, saved draft belongs to the coach's workspace. Navigation
     // must not cancel its dispatch before the database recovery pointer is set.

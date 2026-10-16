@@ -334,6 +334,24 @@ function equipmentLoadSchema(name, hasSourcePrescription) {
   return { ...text, pattern: `^(${alternatives.join("|")})$` };
 }
 
+// These exact accessory names require an external-load choice in this source
+// formatter. Do not infer a machine type, load, muscle group or new exercise.
+const externallyLoadedSourceAccessories = new Set([
+  "leg press", "leg presses", "leg extension", "leg extensions",
+  "hamstring curl", "hamstring curls", "tricep pushdown", "tricep pushdowns", "triceps pushdown", "triceps pushdowns",
+  "chest supported row", "chest supported rows", "cable fly", "cable flies",
+  "lateral raise", "lateral raises", "bicep curl", "bicep curls", "biceps curl", "biceps curls", "curl", "curls",
+]);
+
+/** A neutral omission marker is not a supplied weight. Explicit source loads,
+ * including bodyweight, stay authoritative; generated/unknown names do not use
+ * this rule. Fixed omission markers need no model output or load guess. */
+export function sourceAccessoryLoadPlaceholder(source) {
+  if (!source || typeof source.name !== "string" || source.loadOrAssistance?.trim()) return null;
+  const name = source.name.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return externallyLoadedSourceAccessories.has(name) ? "External load not supplied; confirm with coach" : null;
+}
+
 export function dayOutputSchema(weekNumber, day, sourceDay, markdownPrescription, writtenDay) {
   const daySchema = structuredClone(weekOutputSchema(weekNumber, 1).properties.week.properties.days.items);
   daySchema.properties.number = { const: day.number };
@@ -382,6 +400,8 @@ export function dayOutputSchema(weekNumber, day, sourceDay, markdownPrescription
       for (const field of ["sets", "loadOrAssistance", "effort", "restSeconds", "restIsExplicit", "notes"]) {
         if (supplied[field] !== null && supplied[field] !== undefined) schema.properties[field] = { const: supplied[field] };
       }
+      const missingLoad = sourceAccessoryLoadPlaceholder(supplied);
+      if (missingLoad) schema.properties.loadOrAssistance = { const: missingLoad };
       if (isMainCompound(item.name)) {
         if (supplied.dose?.kind === "reps") schema.properties.reps = { const: supplied.dose.range.min };
         const bounds = /^RPE\s*(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)$/.exec(supplied.effort ?? "");
