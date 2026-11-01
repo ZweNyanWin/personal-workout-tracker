@@ -1,0 +1,55 @@
+{
+  "experiment": "Tommy QLoRA round 9",
+  "result_recorded": "2026-10-13",
+  "publication_prepared": "2026-11-01",
+  "kind": "sanitized historical aggregate, not a new evaluation",
+  "foundation": "Qwen3-4B-Instruct-2507",
+  "training": {
+    "method": "QLoRA",
+    "updates": 480,
+    "train_records": 228,
+    "new_synthetic_records": 100,
+    "new_nutrition_records": 50,
+    "new_powerlifting_records": 50,
+    "validation_records": 32,
+    "loss_test_records": 32,
+    "selected_checkpoint": 480,
+    "selection": "Complete validation of six saved checkpoints, before behavioral review",
+    "peak_mlx_memory_gb_recorded": 4.885
+  },
+  "behavioral_screen": {
+    "cases_per_model": 100,
+    "review": "developer semantic review of all 200 outputs, not independent qualified expert validation",
+    "baseline": {
+      "semanticPasses": 45,
+      "nutritionPasses": 27,
+      "powerliftingPasses": 18,
+      "programSemanticPasses": 0,
+      "criticalViolations": 13,
+      "technicalFailures": 4,
+      "truncatedReplies": 0,
+      "rawProgramMechanicalPasses": 11
+    },
+    "candidate": {
+      "semanticPasses": 44,
+      "nutritionPasses": 27,
+      "powerliftingPasses": 17,
+      "programSemanticPasses": 1,
+      "criticalViolations": 13,
+      "technicalFailures": 5,
+      "truncatedReplies": 2,
+      "rawProgramMechanicalPasses": 9
+    },
+    "paired_gains": 6,
+    "paired_regressions": 7,
+    "decision": "reject candidate; original experimental configuration remained selected at last verified release"
+  },
+  "limits": [
+    "Foundation, template and quantization differ: not a weight-only causal comparison.",
+    "These counts are not population accuracy or clinical approval.",
+    "Frozen behavioral results precede later application safeguards.",
+    "Private data, adapters, raw reviews and orchestration are excluded; public code alone does not reproduce this run.",
+    "Public demo data and regression fixtures are not an unseen acceptance set."
+  ],
+  "provenance_policy": "Personal plans and real client records excluded from shared weights; separately authored synthetic examples and reviewed public references supported the experiment."
+}

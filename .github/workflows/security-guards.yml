@@ -32,6 +32,8 @@ jobs:
           node-version: '24'
       - name: Inspect tracked source
         run: npm run security:secrets && npm run security:history
+      - name: Verify fictional training demo boundaries
+        run: python3 -m unittest discover -s ai/training -p 'test_public_demo.py'
       - name: Install app dependencies
         run: npm ci
       - name: Cache the pinned deployment collector
