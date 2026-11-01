@@ -1,68 +1,63 @@
-# PowerBuild — fitness coaching and applied AI
+# PowerBuild
 
-## Problem
+PowerBuild is a fitness coaching platform prototype I've been building and testing on my Mac.
 
-Re-entering weeks of prescriptions, assigning blocks, collecting completed sets and answering repeated questions consumes coaching time. PowerBuild brings those tasks into one workflow while keeping a coach responsible for the final prescription.
+I started it out of my interest in strength training. I wanted a way to take a written training block, turn it into workouts someone can follow, and keep track of what they actually completed. The project grew to include coach and client accounts, program assignments and a local AI assistant called Tommy.
 
-The project grew from the developer's fitness interests and coaching requirements. Personal plans informed product requirements and private context; they were excluded from shared training weights. Domain examples were separately authored using coaching requirements and reviewed public references.
+## What I built
 
-## Engineering contributions
+A coach can paste a program, review the draft, edit it and assign it to a client. Clients can log their sessions and ask questions about their training. The coach makes the final call on the program.
 
-- A Next.js/TypeScript application for program editing, assignment, workout logging and mobile use.
-- Tenant-scoped coach businesses, client access checks and an owner portal for business-level monitoring.
-- An authenticated server gateway to Mac-hosted Ollama, keeping credentials and local inference endpoints out of browser code.
-- Source-preserving imports for compact multiweek programs: top sets/backdowns, mixed units, paused repetitions, timed holds and explicit rest.
-- Deterministic parsing/arithmetic and complete-block validation around model output. Missing targets are proposals; completed logs are evidence and planned targets are not achievements.
-- Local QLoRA training, checkpoint validation, separate candidate exports and comparative behavioral evaluation, including rejection of candidates that failed acceptance criteria.
+I built the app with Next.js, React, TypeScript and Tailwind CSS. Supabase handles sign-in and the PostgreSQL database. Each coaching business has its own workspace, with access checks around its clients and programs. An owner portal gives an overview of business activity, and I also added an installable web interface.
 
-## Design decision: formatting before generation
+Tommy uses Ollama running on that Mac. The app's server checks access before sending requests through an authenticated gateway. The browser never receives the gateway credential or a direct connection to local inference.
 
-A complete written program is a formatting problem before it is a generation problem. Regenerating every prescribed value with a small model increases latency and opportunities to alter the source. PowerBuild retains known fields locally and uses bounded omission patches where model output is necessary. Ambiguous prose can still need clarification.
+## Keeping the program intact
 
-The workflow is: coach brief → authorized context and exercise catalog → parsing and bounded generation → complete-block validation → editable draft → coach review and assignment. Clients' performed work is stored separately from the approved plan.
+A large part of the work went into preserving the details of a pasted program: sets, reps, loads, units, rest, paused reps, timed holds, and separate top sets and backdowns.
 
-## Actual local fine-tuning
+When those details are already written down, I use parsing and arithmetic to carry them into the draft. The model fills specific gaps where needed, and the whole block is checked before the coach reviews it. Unclear instructions can still need clarification.
 
-The base was an existing Qwen model, not a foundation model trained from scratch. On an Apple M1 Pro with 16 GB unified memory, the latest documented run completed 480 QLoRA updates over 228 training records. One hundred new synthetic cases covered nutrition and powerlifting. Separate 32-record validation and 32-record loss-test splits were preserved. All six saved checkpoints were evaluated on the complete validation split; checkpoint 480 was selected before behavioral review.
+Planned workouts and completed logs are stored separately. A prescribed weight should never show up as something a client has already lifted.
 
-A separately authored 100-case behavioral screen compared the baseline and candidate. Developers reviewed all 200 outputs, including attempted repairs.
+## The training experiment
+
+I also tried QLoRA fine-tuning on an existing Qwen model. On my Apple M1 Pro with 16 GB of unified memory, the recorded run completed 480 updates using 228 training records. These included 100 new synthetic examples covering nutrition and powerlifting. I kept separate sets of 32 records for validation and 32 for loss testing.
+
+All six saved checkpoints were checked against the full validation set. Checkpoint 480 was selected before the behavioral review. I then compared the candidate with the baseline on 100 separate cases. The review covered all 200 outputs, including attempted repairs.
 
 | Measure | Baseline | Candidate v9 |
 | --- | ---: | ---: |
-| Strict semantic passes | 45 / 100 | 44 / 100 |
+| Passed strict semantic review | 45 / 100 | 44 / 100 |
 | Nutrition passes | 27 / 50 | 27 / 50 |
 | Powerlifting passes | 18 / 50 | 17 / 50 |
 | Critical flags | 13 | 13 |
 
-There were six paired gains and seven regressions. The candidate failed the gate and was not promoted. Lower validation loss was not treated as coaching accuracy. Foundation, template and quantization differences limit causal conclusions about the adapter alone. Developer-authored/reviewed cases are not independent expert validation or population accuracy measurements.
+The candidate improved on six cases but regressed on seven. I kept the original configuration because the candidate failed the acceptance checks. Its lower validation loss hadn't translated into better answers in this comparison.
 
-The engineering result is an experiment and rejection workflow with preserved evidence, rather than an unsupported claim of a better model. Later application safeguards were improved separately; the frozen scores are not scores for those later serving changes.
+These results were recorded on October 13, 2026. The cases were written and reviewed by developers, without independent expert validation. The foundation, template and quantization also differed between the two configurations, which limits what the scores say about the adapter alone. Later changes to the app's safeguards are separate from this experiment.
 
-## Performance and verification
+My personal plans helped shape the requirements and private context. They and real client records were excluded from the shared training weights. The training examples were authored separately using coaching requirements and reviewed public references.
 
-On October 16, 2026, a signed-in production test imported a fictional 38,057-character complete program into 12 weeks, 48 sessions and 192 groups. The completed save was observed at 15.88 seconds. Rendered checks covered explicit loads, quantities, units, source cues and rest. Save/reload, conversation persistence and a 64,000-character field boundary also passed.
+## What I tested
 
-This measures one complete-source import, not writing a new twelve-week plan. An earlier partial-source run proposing missing weeks took roughly 18–19 minutes. A short production chat reply completed after 22 seconds and by 68 seconds. Mac inference and temporary network connections remain practical limits.
+In a signed-in test on October 16, 2026, I imported a fictional, fully written program containing 38,057 characters. The import produced 12 weeks, 48 sessions and 192 groups, and I could see the completed save at 15.88 seconds. Checks covered the displayed loads, quantities, units, rest and source details. The program and conversation survived a reload, and the 64,000-character input-limit checks passed.
 
-The release recorded 327 passing automated cases and one optional skipped QR database case. Deployment source and private-artifact checks passed. These are scoped, dated checks, not security certification or an uptime promise.
+That timing covers formatting a supplied program. An earlier run that had to propose missing weeks took roughly 18 to 19 minutes. In one short chat test, completion was observed between 22 and 68 seconds. The Mac and its network connection make a noticeable difference to the experience.
 
-## Public evidence map
+For that release, 327 automated cases passed and one optional QR database case was skipped. The source and deployment checks also passed, including checks for accidentally bundled private files.
 
-| Topic | Inspect |
-| --- | --- |
-| Tenant/access controls | `supabase/migrations/`, `supabase/tests/` |
-| Source-preserving generation | `connector/program-generation.mjs`, `connector/compact-prescription.mjs`, `connector/written-prescription.mjs` |
-| Schema/request boundaries | `lib/coach/`, `app/api/coach/` |
-| Gateway lifecycle | `connector/run.mjs`, `connector/gateway.mjs` |
-| Training and separate exports | `ai/training/train_local.py`, `ai/training/import_candidate.py`, `ai/training/export_gguf.py` |
-| Evaluation entry point | `ai/run-evals.mjs`, `ai/evals/` |
-| Historical aggregate results | [Round 9 summary](../../ai/reports/round9-public-summary.json) |
-| Privacy guards | `scripts/secret-guard.mjs`, `scripts/check-deployment-privacy.mjs` |
+## Where it stands
 
-Selected tools are published, not every private orchestration helper or the full experiment environment. Data, checkpoints and raw reviews remain private, so the historical run cannot be reproduced from this repository alone. Public regression cases and demo data must not be presented as a new unseen acceptance set.
+PowerBuild is still a prototype, with testing so far on my Mac. The AI connection uses a temporary tunnel and depends on the Mac staying awake and connected. Authenticated app access requires an invitation. Broader device testing and more reliable inference hosting would be needed before offering it as a public service.
 
-## Portfolio wording
+The repository includes selected training and evaluation tools. The private dataset, checkpoints, raw reviews and some experiment helpers are excluded, so the published code alone cannot reproduce the historical run. The fictional demo data checks the data format; the published regression cases aren't a new, unseen benchmark.
 
-> Built PowerBuild, a multi-tenant coaching platform with locally hosted AI. Developed source-preserving workout imports, tenant access controls, and a QLoRA training and evaluation workflow using curated fitness-domain examples. Compared trained candidates against a baseline and retained the baseline when the acceptance gate failed.
+## A few places to look in the code
 
-Use synthetic UI screenshots or a separately authorized demonstration account in a public portfolio. Real client identities, health details, personal programs and uploaded documents are not showcase assets. The private app may require an invitation and its AI depends on the Mac; the portfolio should remain useful without logging into it.
+- [Program generation](../../connector/program-generation.mjs), [compact prescriptions](../../connector/compact-prescription.mjs) and [written prescriptions](../../connector/written-prescription.mjs) handle imported training blocks.
+- [Database migrations](../../supabase/migrations/) and [database tests](../../supabase/tests/) cover tenant access and the coaching workflow.
+- [Coach server routes](../../app/api/coach/), [coach logic](../../lib/coach/) and the [local gateway](../../connector/gateway.mjs) connect the app to inference.
+- [Training](../../ai/training/train_local.py), [candidate import](../../ai/training/import_candidate.py) and [GGUF export](../../ai/training/export_gguf.py) cover the public training tools.
+- The [evaluation runner](../../ai/run-evals.mjs) and [round 9 results](../../ai/reports/round9-public-summary.json) show how the experiments were checked.
+- [Secret checks](../../scripts/secret-guard.mjs) and [deployment checks](../../scripts/check-deployment-privacy.mjs) help keep private files out of the repository and app bundle.
